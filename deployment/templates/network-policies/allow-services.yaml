@@ -1,0 +1,300 @@
+---
+# Allow ingress from nginx ingress controller to gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-ingress-to-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow gateway to call backend services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-gateway-to-services
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow services to call each other (intra-service communication)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-intra-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: cosmos-fraud-detection
+              app.kubernetes.io/instance: {{ .Release.Name }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: cosmos-fraud-detection
+              app.kubernetes.io/instance: {{ .Release.Name }}
+---
+# Allow services egress to Kafka
+{{- if .Values.kafka.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-services-to-kafka
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              strimzi.io/cluster: {{ .Release.Name }}-kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
+---
+# Allow Kafka pods to accept ingress from services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-kafka-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      strimzi.io/cluster: {{ .Release.Name }}-kafka
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: cosmos-fraud-detection
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
+    - from:
+        - podSelector:
+            matchLabels:
+              strimzi.io/cluster: {{ .Release.Name }}-kafka
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
+{{- end }}
+---
+# Allow services egress to Redis
+{{- if .Values.redis.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-services-to-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 16379
+---
+# Allow Redis ingress from services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-redis-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: cosmos-fraud-detection
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 6379
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 16379
+{{- end }}
+---
+# Allow services egress to ScyllaDB
+{{- if .Values.scylla.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-services-to-scylla
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: scylladb
+      ports:
+        - protocol: TCP
+          port: 9042
+        - protocol: TCP
+          port: 9142
+{{- end }}
+---
+# Allow services egress to ClickHouse
+{{- if .Values.clickhouse.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-services-to-clickhouse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clickhouse
+      ports:
+        - protocol: TCP
+          port: 8123
+        - protocol: TCP
+          port: 9000
+{{- end }}
+---
+# Allow Prometheus scraping
+{{- if .Values.monitoring.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-prometheus-scrape
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cosmos-fraud-detection
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9121
+        - protocol: TCP
+          port: 9249
+{{- end }}

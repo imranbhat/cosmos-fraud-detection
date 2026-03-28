@@ -1,0 +1,45 @@
+---
+# Default deny all ingress traffic in the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Default deny all egress traffic in the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+---
+# Allow DNS resolution for all pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-dns
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
