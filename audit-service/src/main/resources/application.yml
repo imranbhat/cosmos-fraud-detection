@@ -1,0 +1,58 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: audit-service
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: audit-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+    properties:
+      schema.registry.url: http://localhost:8081
+      specific.avro.reader: true
+
+# ScyllaDB (DataStax Java Driver)
+scylla:
+  contact-points: localhost
+  port: 9042
+  datacenter: datacenter1
+  keyspace: fraud_audit
+
+# ClickHouse JDBC
+clickhouse:
+  url: jdbc:clickhouse://localhost:8123/default
+  username: default
+  password: ""
+
+# Analytics buffer settings
+analytics:
+  batch-size: 1000
+  flush-interval-ms: 1000
+
+# Spring Boot Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    com.cosmos.fraud: INFO
+    org.springframework.kafka: WARN
