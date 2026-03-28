@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "api-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "api-gateway") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "cosmos-fraud-detection.serviceLabels" (list . "api-gateway") | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.gateway.port | quote }}
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api-gateway
+          image: {{ include "cosmos-fraud-detection.image" (list . .Values.gateway.image) }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.port }}
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.global.env | quote }}
+            - name: SERVER_PORT
+              value: {{ .Values.gateway.port | quote }}
+            - name: INGESTION_SERVICE_URL
+              value: http://{{ .Release.Name }}-ingestion/
+            - name: SCORING_SERVICE_URL
+              value: http://{{ .Release.Name }}-scoring/
+            - name: THREEDS_SERVICE_URL
+              value: http://{{ .Release.Name }}-threeds/
+            - name: AUDIT_SERVICE_URL
+              value: http://{{ .Release.Name }}-audit/
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gateway-secrets
+                  key: jwt-secret
+            - name: API_KEY_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gateway-secrets
+                  key: api-key-salt
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 15
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "api-gateway") | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
