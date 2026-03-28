@@ -1,0 +1,81 @@
+{{- if .Values.monitoring.enabled }}
+{{- $services := list "ingestion" "feature-store" "scoring" "threeds" "audit" "gateway" "stream-processor" }}
+{{- range $services }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $.Release.Name }}-{{ . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list $ .) | nindent 4 }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ . }}-service
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ $.Values.monitoring.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        - sourceLabels: [__meta_kubernetes_service_name]
+          targetLabel: service
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: jvm_.*
+          targetLabel: __name__
+          replacement: $1
+{{- end }}
+---
+# Redis exporter ServiceMonitor
+{{- if $.Values.redis.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $.Release.Name }}-redis
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list $ "redis") | nindent 4 }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ $.Values.monitoring.serviceMonitor.scrapeTimeout }}
+{{- end }}
+---
+# Kafka exporter ServiceMonitor
+{{- if $.Values.kafka.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $.Release.Name }}-kafka
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list $ "kafka") | nindent 4 }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/cluster: {{ $.Release.Name }}-kafka
+      strimzi.io/kind: Kafka
+  endpoints:
+    - port: tcp-prometheus
+      path: /metrics
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ $.Values.monitoring.serviceMonitor.scrapeTimeout }}
+{{- end }}
+{{- end }}

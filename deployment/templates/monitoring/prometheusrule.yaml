@@ -1,0 +1,213 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.labels" . | nindent 4 }}
+    release: prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: cosmos-fraud-detection.fraud
+      interval: 30s
+      rules:
+        - alert: HighFraudRate
+          expr: |
+            (
+              sum(rate(fraud_decisions_total{decision="FRAUD", namespace="{{ .Release.Namespace }}"}[5m]))
+              /
+              sum(rate(fraud_decisions_total{namespace="{{ .Release.Namespace }}"}[5m]))
+            ) > 0.10
+          for: 5m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "High fraud rate detected"
+            description: "Fraud rate is {{ "{{ $value | humanizePercentage }}" }} over the last 5 minutes, exceeding 10% threshold."
+            runbook: "https://wiki.cosmos.internal/runbooks/high-fraud-rate"
+
+        - alert: FraudRateSpike
+          expr: |
+            (
+              sum(rate(fraud_decisions_total{decision="FRAUD", namespace="{{ .Release.Namespace }}"}[5m]))
+              /
+              sum(rate(fraud_decisions_total{namespace="{{ .Release.Namespace }}"}[5m]))
+            ) > bool (
+              avg_over_time(
+                (sum(rate(fraud_decisions_total{decision="FRAUD", namespace="{{ .Release.Namespace }}"}[5m]))
+                 / sum(rate(fraud_decisions_total{namespace="{{ .Release.Namespace }}"}[5m])))[1h:5m]
+              ) * 2
+            )
+          for: 10m
+          labels:
+            severity: warning
+            team: fraud-detection
+          annotations:
+            summary: "Fraud rate spike detected"
+            description: "Fraud rate has doubled compared to the 1-hour average."
+
+    - name: cosmos-fraud-detection.latency
+      interval: 30s
+      rules:
+        - alert: ScoringLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_server_requests_seconds_bucket{
+                service="{{ .Release.Name }}-scoring",
+                namespace="{{ .Release.Namespace }}",
+                uri="/api/v1/score"
+              }[5m])) by (le)
+            ) > 0.100
+          for: 2m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "Scoring service P99 latency exceeds 100ms"
+            description: "Scoring service P99 latency is {{ "{{ $value | humanizeDuration }}" }}, exceeding 100ms SLA."
+            runbook: "https://wiki.cosmos.internal/runbooks/scoring-latency"
+
+        - alert: ScoringLatencyWarning
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_server_requests_seconds_bucket{
+                service="{{ .Release.Name }}-scoring",
+                namespace="{{ .Release.Namespace }}",
+                uri="/api/v1/score"
+              }[5m])) by (le)
+            ) > 0.050
+          for: 5m
+          labels:
+            severity: warning
+            team: fraud-detection
+          annotations:
+            summary: "Scoring service P95 latency exceeds 50ms"
+            description: "Scoring service P95 latency is {{ "{{ $value | humanizeDuration }}" }}, approaching SLA boundary."
+
+        - alert: GatewayHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_server_requests_seconds_bucket{
+                service="{{ .Release.Name }}-gateway",
+                namespace="{{ .Release.Namespace }}"
+              }[5m])) by (le)
+            ) > 0.200
+          for: 5m
+          labels:
+            severity: warning
+            team: fraud-detection
+          annotations:
+            summary: "API Gateway P99 latency exceeds 200ms"
+            description: "Gateway P99 latency is {{ "{{ $value | humanizeDuration }}" }}."
+
+    - name: cosmos-fraud-detection.kafka
+      interval: 30s
+      rules:
+        - alert: KafkaConsumerLagHigh
+          expr: |
+            sum(kafka_consumergroup_lag{
+              namespace="{{ .Release.Namespace }}"
+            }) by (consumergroup, topic) > 10000
+          for: 5m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "Kafka consumer lag exceeds 10,000"
+            description: "Consumer group {{ "{{ $labels.consumergroup }}" }} on topic {{ "{{ $labels.topic }}" }} has lag of {{ "{{ $value }}" }}."
+            runbook: "https://wiki.cosmos.internal/runbooks/kafka-consumer-lag"
+
+        - alert: KafkaConsumerLagWarning
+          expr: |
+            sum(kafka_consumergroup_lag{
+              namespace="{{ .Release.Namespace }}"
+            }) by (consumergroup, topic) > 5000
+          for: 10m
+          labels:
+            severity: warning
+            team: fraud-detection
+          annotations:
+            summary: "Kafka consumer lag exceeds 5,000"
+            description: "Consumer group {{ "{{ $labels.consumergroup }}" }} on topic {{ "{{ $labels.topic }}" }} has lag of {{ "{{ $value }}" }}."
+
+        - alert: KafkaBrokerDown
+          expr: |
+            count(up{job=~".*kafka.*", namespace="{{ .Release.Namespace }}"} == 0) > 0
+          for: 1m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "Kafka broker is down"
+            description: "{{ "{{ $value }}" }} Kafka broker(s) are unreachable."
+
+    - name: cosmos-fraud-detection.infrastructure
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum(rate(http_server_requests_seconds_count{
+              status=~"5..",
+              namespace="{{ .Release.Namespace }}"
+            }[5m])) by (service)
+            /
+            sum(rate(http_server_requests_seconds_count{
+              namespace="{{ .Release.Namespace }}"
+            }[5m])) by (service)
+            > 0.01
+          for: 5m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "High error rate for {{ "{{ $labels.service }}" }}"
+            description: "Service {{ "{{ $labels.service }}" }} has error rate of {{ "{{ $value | humanizePercentage }}" }}."
+
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="{{ .Release.Namespace }}"
+            }[15m]) > 3
+          for: 5m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "Pod is crash looping"
+            description: "Pod {{ "{{ $labels.pod }}" }} in container {{ "{{ $labels.container }}" }} has restarted {{ "{{ $value }}" }} times."
+
+        - alert: RedisDown
+          expr: |
+            up{job=~".*redis.*", namespace="{{ .Release.Namespace }}"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: fraud-detection
+          annotations:
+            summary: "Redis instance is down"
+            description: "Redis instance {{ "{{ $labels.instance }}" }} is unreachable."
+
+        - alert: HighMemoryUsage
+          expr: |
+            (
+              container_memory_working_set_bytes{
+                namespace="{{ .Release.Namespace }}",
+                container!=""
+              }
+              /
+              container_spec_memory_limit_bytes{
+                namespace="{{ .Release.Namespace }}",
+                container!=""
+              }
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            team: fraud-detection
+          annotations:
+            summary: "High memory usage for {{ "{{ $labels.pod }}" }}"
+            description: "Container {{ "{{ $labels.container }}" }} in pod {{ "{{ $labels.pod }}" }} is using {{ "{{ $value | humanizePercentage }}" }} of its memory limit."
+{{- end }}
