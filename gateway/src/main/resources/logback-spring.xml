@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <springProperty scope="context" name="appName"   source="spring.application.name" defaultValue="gateway"/>
+    <springProperty scope="context" name="activeProfile" source="spring.profiles.active" defaultValue="default"/>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Console appender – structured JSON via Logstash encoder
+         ═══════════════════════════════════════════════════════════ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Static fields present on every log record -->
+            <customFields>{"service":"${appName}","profile":"${activeProfile}"}</customFields>
+
+            <!-- Include MDC fields (correlationId etc.) -->
+            <includeMdc>true</includeMdc>
+
+            <!-- Include caller data for DEBUG and below -->
+            <includeCallerData>false</includeCallerData>
+
+            <!-- Human-readable timestamp in ISO-8601 -->
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZZ</timestampPattern>
+
+            <!-- Rename default "message" field to "msg" for ECS compatibility -->
+            <fieldNames>
+                <message>msg</message>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+
+            <!-- Shorten logger name to last two segments -->
+            <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+        </encoder>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Async wrapper to avoid blocking the Netty event loop
+         ═══════════════════════════════════════════════════════════ -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="CONSOLE"/>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Profile-specific overrides
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- In local development use plain-text to aid readability -->
+    <springProfile name="local">
+        <appender name="PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{correlationId}] - %msg%n</pattern>
+            </encoder>
+        </appender>
+        <root level="DEBUG">
+            <appender-ref ref="PLAIN"/>
+        </root>
+    </springProfile>
+
+    <!-- All other profiles (staging, production) use structured JSON -->
+    <springProfile name="!local">
+        <logger name="com.cosmos.fraud.gateway" level="DEBUG" additivity="false">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </logger>
+        <logger name="org.springframework.cloud.gateway" level="INFO" additivity="false">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </logger>
+        <logger name="org.springframework.security" level="INFO" additivity="false">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </logger>
+        <logger name="reactor.netty" level="WARN" additivity="false">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </logger>
+        <root level="INFO">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </root>
+    </springProfile>
+
+</configuration>

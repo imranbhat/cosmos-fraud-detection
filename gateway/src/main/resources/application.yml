@@ -1,0 +1,165 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+
+  # Redis (used by RequestRateLimiter)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # JWT resource server
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:https://auth.example.com/realms/cosmos}
+
+  # Spring Cloud Gateway – YAML-based route definitions
+  # (complement to the Java RouteLocator in RouteConfig; disable if using only Java config)
+  cloud:
+    gateway:
+      routes:
+        - id: ingestion-service-transactions
+          uri: http://localhost:8081
+          predicates:
+            - Path=/v1/transactions/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: ingestion-cb
+                fallbackUri: forward:/fallback/ingestion
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: feature-store
+          uri: http://localhost:8082
+          predicates:
+            - Path=/v1/features/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: feature-store-cb
+                fallbackUri: forward:/fallback/feature-store
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: scoring-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/v1/scoring/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: scoring-cb
+                fallbackUri: forward:/fallback/scoring
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: threeds-service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/v1/threeds/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: threeds-cb
+                fallbackUri: forward:/fallback/threeds
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: audit-service
+          uri: http://localhost:8085
+          predicates:
+            - Path=/v1/audit/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: audit-cb
+                fallbackUri: forward:/fallback/audit
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: ingestion-service-devices
+          uri: http://localhost:8081
+          predicates:
+            - Path=/v1/devices/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: ingestion-cb
+                fallbackUri: forward:/fallback/ingestion
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@ipKeyResolver}"
+
+# Resilience4j circuit breaker defaults
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+    instances:
+      ingestion-cb:
+        baseConfig: default
+      feature-store-cb:
+        baseConfig: default
+      scoring-cb:
+        baseConfig: default
+      threeds-cb:
+        baseConfig: default
+      audit-cb:
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+
+# Actuator / management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus,gateway,info
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.cosmos.fraud.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
+    reactor.netty: WARN
