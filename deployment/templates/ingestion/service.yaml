@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ingestion
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "ingestion-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "ingestion-service") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http

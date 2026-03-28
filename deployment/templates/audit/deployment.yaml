@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-audit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "audit-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.audit.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "audit-service") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "cosmos-fraud-detection.serviceLabels" (list . "audit-service") | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.audit.port | quote }}
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-audit
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: audit-service
+          image: {{ include "cosmos-fraud-detection.image" (list . .Values.audit.image) }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.audit.port }}
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.global.env | quote }}
+            - name: SERVER_PORT
+              value: {{ .Values.audit.port | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-kafka-config
+                  key: bootstrap.servers
+            - name: CLICKHOUSE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-clickhouse-config
+                  key: url
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-audit-secrets
+                  key: clickhouse-password
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-audit-secrets
+                  key: encryption-key
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 20
+          resources:
+            {{- toYaml .Values.audit.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "audit-service") | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
