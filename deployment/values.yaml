@@ -1,0 +1,198 @@
+global:
+  image:
+    registry: ghcr.io/cosmos
+    tag: "1.0.0"
+  env: dev
+
+ingestion:
+  replicaCount: 2
+  image:
+    repository: cosmos/ingestion-service
+  port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+
+featureStore:
+  replicaCount: 2
+  image:
+    repository: cosmos/feature-store-service
+  port: 8080
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+
+scoring:
+  replicaCount: 3
+  image:
+    repository: cosmos/scoring-service
+  port: 8080
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+    targetKafkaConsumerLag: 10000
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+
+threeds:
+  replicaCount: 2
+  image:
+    repository: cosmos/threeds-service
+  port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+
+audit:
+  replicaCount: 2
+  image:
+    repository: cosmos/audit-service
+  port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+gateway:
+  replicaCount: 2
+  image:
+    repository: cosmos/api-gateway
+  port: 8080
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+  ingress:
+    enabled: true
+    className: nginx
+    host: api.cosmos-fraud.internal
+    tls:
+      enabled: true
+      secretName: cosmos-fraud-tls
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+      nginx.ingress.kubernetes.io/rate-limit: "1000"
+      nginx.ingress.kubernetes.io/rate-limit-window: "1s"
+
+streamProcessor:
+  image:
+    repository: cosmos/stream-processor
+  jobManager:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+  taskManager:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+    taskSlots: 4
+
+kafka:
+  enabled: true
+  replicas: 3
+  version: "3.7.0"
+  defaultPartitions: 64
+  defaultReplicationFactor: 3
+  storage:
+    type: ephemeral  # override to persistent in prod
+    size: 100Gi
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+
+redis:
+  enabled: true
+  replicas: 6
+  image:
+    repository: redis
+    tag: "7.2-alpine"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+scylla:
+  enabled: true
+
+clickhouse:
+  enabled: true
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    interval: 15s
+    scrapeTimeout: 10s
+  grafana:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    name: cosmos-secret-store
+    kind: SecretStore
+  refreshInterval: 1h

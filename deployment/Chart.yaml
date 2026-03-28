@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cosmos-fraud-detection
+description: Real-time fraud detection platform
+version: 1.0.0
+appVersion: "1.0.0"
+type: application

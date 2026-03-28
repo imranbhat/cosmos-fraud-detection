@@ -1,0 +1,137 @@
+global:
+  image:
+    tag: "1.0.0"  # Override with specific release tag in CI/CD
+  env: prod
+
+ingestion:
+  replicaCount: 4
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    minReplicas: 4
+    maxReplicas: 40
+    targetCPUUtilizationPercentage: 65
+
+featureStore:
+  replicaCount: 4
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+  hpa:
+    minReplicas: 4
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 65
+
+scoring:
+  replicaCount: 6
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 4Gi
+    limits:
+      cpu: 8000m
+      memory: 8Gi
+  hpa:
+    minReplicas: 6
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 55
+  pdb:
+    maxUnavailable: 1
+
+threeds:
+  replicaCount: 4
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    minReplicas: 4
+    maxReplicas: 40
+    targetCPUUtilizationPercentage: 65
+
+audit:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+gateway:
+  replicaCount: 4
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 2Gi
+  ingress:
+    host: api.cosmos-fraud.io
+    tls:
+      enabled: true
+      secretName: cosmos-fraud-prod-tls
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+      nginx.ingress.kubernetes.io/rate-limit: "5000"
+      nginx.ingress.kubernetes.io/rate-limit-window: "1s"
+      nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+      nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+
+streamProcessor:
+  taskManager:
+    replicaCount: 6
+    resources:
+      requests:
+        cpu: 2000m
+        memory: 4Gi
+      limits:
+        cpu: 8000m
+        memory: 8Gi
+    taskSlots: 8
+
+kafka:
+  replicas: 3
+  defaultPartitions: 128
+  storage:
+    type: persistent
+    size: 500Gi
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 4Gi
+    limits:
+      cpu: 8000m
+      memory: 8Gi
+
+redis:
+  replicas: 6
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+
+monitoring:
+  enabled: true
+
+externalSecrets:
+  refreshInterval: 15m
