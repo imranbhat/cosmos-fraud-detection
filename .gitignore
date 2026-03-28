@@ -92,3 +92,7 @@ secrets/
 *.onnx
 *.pb
 *.h5
+
+# Claude Code
+CLAUDE.md
+.claude/
