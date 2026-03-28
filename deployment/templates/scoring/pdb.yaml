@@ -1,0 +1,14 @@
+{{- if .Values.scoring.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-scoring
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "scoring-service") | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.scoring.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "scoring-service") | nindent 6 }}
+{{- end }}
