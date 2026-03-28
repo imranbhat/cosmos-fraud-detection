@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: Cosmos Fraud Detection
+    orgId: 1
+    folder: Cosmos Fraud Detection
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

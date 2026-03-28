@@ -1,0 +1,641 @@
+# =============================================================================
+# Cosmos Fraud Detection – Minimal Dev Stack
+# Optimized for local development machines (low memory footprint)
+#
+# Includes ALL components: infrastructure, microservices, Flink, model-serving,
+# and observability — running on a single Docker network.
+#
+# Usage:
+#   docker compose -f docker-compose-dev.yml up -d
+#
+# Dashboards:
+#   Grafana  : http://localhost:3000  (admin / admin)
+#   Prometheus: http://localhost:9090
+#   Jaeger   : http://localhost:16686
+#   Flink UI : http://localhost:8088
+# =============================================================================
+
+networks:
+  fraud-net:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  clickhouse-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ===========================================================================
+  # KAFKA – Single KRaft Combined Node (broker + controller)
+  # ===========================================================================
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    hostname: kafka
+    networks: [fraud-net]
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    environment:
+      KAFKA_NODE_ID: 1
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_KRAFT_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms256m
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # SCHEMA REGISTRY – Single Node
+  # ===========================================================================
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    container_name: schema-registry
+    hostname: schema-registry
+    networks: [fraud-net]
+    ports:
+      - "18081:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 1
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/subjects"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # REDIS – Single Node (no cluster, no persistence)
+  # ===========================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    hostname: redis
+    networks: [fraud-net]
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --port 6379
+      --save ""
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # SCYLLADB – Single Node (dev mode)
+  # ===========================================================================
+
+  scylla:
+    image: scylladb/scylla:6.0
+    container_name: scylla
+    hostname: scylla
+    networks: [fraud-net]
+    ports:
+      - "9042:9042"
+    command: >
+      --seeds scylla
+      --listen-address scylla
+      --rpc-address scylla
+      --broadcast-rpc-address scylla
+      --developer-mode 1
+      --memory 512M
+      --smp 1
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh scylla 9042 -e 'describe keyspaces' 2>/dev/null || exit 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # CLICKHOUSE – Single Node
+  # ===========================================================================
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: clickhouse
+    hostname: clickhouse
+    networks: [fraud-net]
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DB: fraud_analytics
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # APPLICATION SERVICES (all capped at 512MB / 0.5 CPU)
+  # ===========================================================================
+
+  ingestion-service:
+    image: cosmos-fraud/ingestion-service:latest
+    container_name: ingestion-service
+    hostname: ingestion-service
+    networks: [fraud-net]
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: ingestion-service
+      SERVER_PORT: 8081
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: ingestion-service
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8081/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  feature-store:
+    image: cosmos-fraud/feature-store:latest
+    container_name: feature-store
+    hostname: feature-store
+    networks: [fraud-net]
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: feature-store
+      SERVER_PORT: 8082
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: feature-store
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8082/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  scoring-service:
+    image: cosmos-fraud/scoring-service:latest
+    container_name: scoring-service
+    hostname: scoring-service
+    networks: [fraud-net]
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: scoring-service
+      SERVER_PORT: 8083
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_KAFKA_CONSUMER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_KAFKA_PRODUCER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      MODEL_SERVING_URL: http://model-serving:8086
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: scoring-service
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8083/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  threeds-service:
+    image: cosmos-fraud/threeds-service:latest
+    container_name: threeds-service
+    hostname: threeds-service
+    networks: [fraud-net]
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: threeds-service
+      SERVER_PORT: 8084
+      SCORING_SERVICE_URL: http://scoring-service:8083
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: threeds-service
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      scoring-service:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8084/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  audit-service:
+    image: cosmos-fraud/audit-service:latest
+    container_name: audit-service
+    hostname: audit-service
+    networks: [fraud-net]
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: audit-service
+      SERVER_PORT: 8085
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SCYLLA_CONTACT_POINTS: scylla
+      SCYLLA_PORT: 9042
+      SCYLLA_DATACENTER: datacenter1
+      SCYLLA_KEYSPACE: fraud_audit
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/default
+      CLICKHOUSE_USERNAME: default
+      CLICKHOUSE_PASSWORD: ""
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: audit-service
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      scylla:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8085/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  gateway:
+    image: cosmos-fraud/gateway:latest
+    container_name: gateway
+    hostname: gateway
+    networks: [fraud-net]
+    ports:
+      - "18080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: gateway
+      SERVER_PORT: 8080
+      # Override route URIs to point to Docker service hostnames
+      # Route indices match application.yml order: 0=ingestion-transactions, 1=feature-store, 2=scoring, 3=threeds, 4=audit, 5=ingestion-devices
+      SPRING_CLOUD_GATEWAY_ROUTES_0_ID: ingestion-service-transactions
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://ingestion-service:8081
+      SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0: Path=/v1/transactions/**
+      SPRING_CLOUD_GATEWAY_ROUTES_1_ID: feature-store
+      SPRING_CLOUD_GATEWAY_ROUTES_1_URI: http://feature-store:8082
+      SPRING_CLOUD_GATEWAY_ROUTES_1_PREDICATES_0: Path=/v1/features/**
+      SPRING_CLOUD_GATEWAY_ROUTES_2_ID: scoring-service
+      SPRING_CLOUD_GATEWAY_ROUTES_2_URI: http://scoring-service:8083
+      SPRING_CLOUD_GATEWAY_ROUTES_2_PREDICATES_0: Path=/v1/scoring/**
+      SPRING_CLOUD_GATEWAY_ROUTES_3_ID: threeds-service
+      SPRING_CLOUD_GATEWAY_ROUTES_3_URI: http://threeds-service:8084
+      SPRING_CLOUD_GATEWAY_ROUTES_3_PREDICATES_0: Path=/v1/threeds/**
+      SPRING_CLOUD_GATEWAY_ROUTES_4_ID: audit-service
+      SPRING_CLOUD_GATEWAY_ROUTES_4_URI: http://audit-service:8085
+      SPRING_CLOUD_GATEWAY_ROUTES_4_PREDICATES_0: Path=/v1/audit/**
+      SPRING_CLOUD_GATEWAY_ROUTES_5_ID: ingestion-service-devices
+      SPRING_CLOUD_GATEWAY_ROUTES_5_URI: http://ingestion-service:8081
+      SPRING_CLOUD_GATEWAY_ROUTES_5_PREDICATES_0: Path=/v1/devices/**
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # Disable JWT validation in dev (no real IdP)
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ""
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: gateway
+      JAVA_OPTS: -Xmx384m -Xms128m
+    depends_on:
+      ingestion-service:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+      scoring-service:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8080/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # MODEL SERVING – ONNX Runtime CPU-only
+  # ===========================================================================
+
+  model-serving:
+    image: cosmos-fraud/model-serving:latest
+    container_name: model-serving
+    hostname: model-serving
+    networks: [fraud-net]
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_APPLICATION_NAME: model-serving
+      SERVER_PORT: 8086
+      MODEL_PATH: /models/fraud_model.onnx
+      # CPU-only: no GPU/CUDA
+      ORT_USE_CPU: "true"
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: model-serving
+      JAVA_OPTS: -Xmx384m -Xms128m
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8086/ | grep -qE '^[2-4]'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # APACHE FLINK – Minimal Local Cluster (1 JM + 1 TM)
+  # ===========================================================================
+
+  flink-jobmanager:
+    image: flink:1.19
+    container_name: flink-jobmanager
+    hostname: flink-jobmanager
+    networks: [fraud-net]
+    ports:
+      - "8088:8081"   # Flink Web UI (mapped to 8088 to avoid conflict with schema-registry)
+      - "6123:6123"   # RPC
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.rpc.port: 6123
+        jobmanager.memory.process.size: 768m
+        state.backend.type: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        rest.flamegraph.enabled: true
+        web.cancel.enable: true
+    deploy:
+      resources:
+        limits:
+          memory: 896M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/overview > /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  flink-taskmanager:
+    image: flink:1.19
+    container_name: flink-taskmanager
+    hostname: flink-taskmanager
+    networks: [fraud-net]
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.rpc.port: 6123
+        taskmanager.memory.process.size: 1024m
+        taskmanager.numberOfTaskSlots: 4
+        state.backend.type: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+    deploy:
+      resources:
+        limits:
+          memory: 1280M
+          cpus: "1.0"
+    restart: unless-stopped
+
+  # ===========================================================================
+  # OBSERVABILITY
+  # ===========================================================================
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: jaeger
+    hostname: jaeger
+    networks: [fraud-net]
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: 5000
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: prometheus
+    hostname: prometheus
+    networks: [fraud-net]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus-dev.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: grafana
+    hostname: grafana
+    networks: [fraud-net]
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped

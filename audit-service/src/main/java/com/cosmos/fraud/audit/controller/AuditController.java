@@ -139,8 +139,8 @@ public class AuditController {
                 .setCardId(record.cardId())
                 .setRiskScore(record.riskScore())
                 .setDecision(decision)
-                .setAppliedRules(record.appliedRules())
-                .setModelScores(record.modelScores())
+                .setAppliedRules(new java.util.ArrayList<>(record.appliedRules()))
+                .setModelScores(new java.util.HashMap<>(record.modelScores()))
                 .setLatencyMs(record.latencyMs())
                 .setTimestamp(record.timestamp().toEpochMilli())
                 .build();

@@ -74,7 +74,7 @@ public class ScoringService {
                 .setRiskScore(finalScore)
                 .setDecision(decision)
                 .setAppliedRules(List.copyOf(ruleResult.triggeredRules()))
-                .setModelScores(modelScores)
+                .setModelScores(new java.util.HashMap<>(modelScores))
                 .setLatencyMs(latencyMs)
                 .setTimestamp(System.currentTimeMillis())
                 .build();

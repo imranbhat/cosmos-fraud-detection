@@ -1,0 +1,61 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    environment: dev
+    project: cosmos-fraud-detection
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [gateway:8080]
+        labels:
+          service: gateway
+
+  - job_name: ingestion-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [ingestion-service:8081]
+        labels:
+          service: ingestion-service
+
+  - job_name: feature-store
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [feature-store:8082]
+        labels:
+          service: feature-store
+
+  - job_name: scoring-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [scoring-service:8083]
+        labels:
+          service: scoring-service
+
+  - job_name: threeds-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [threeds-service:8084]
+        labels:
+          service: threeds-service
+
+  - job_name: audit-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [audit-service:8085]
+        labels:
+          service: audit-service
+
+  - job_name: model-serving
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [model-serving:8086]
+        labels:
+          service: model-serving

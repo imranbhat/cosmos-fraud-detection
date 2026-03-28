@@ -47,6 +47,12 @@
             <artifactId>clickhouse-jdbc</artifactId>
         </dependency>
 
+        <!-- Spring JDBC (JdbcTemplate for ClickHouse) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
         <!-- Micrometer Prometheus Registry -->
         <dependency>
             <groupId>io.micrometer</groupId>

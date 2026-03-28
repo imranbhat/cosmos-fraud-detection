@@ -1,0 +1,163 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "title": "Transaction Ingestion",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] }, "unit": "reqps" } },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "id": 50,
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Ingestion Rate",
+      "type": "stat",
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\",uri=~\"/v1/transactions.*\"}[1m]))", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] }, "unit": "ms" } },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "id": 51,
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Ingestion p99 Latency",
+      "type": "stat",
+      "targets": [{ "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"ingestion-service\",uri=~\"/v1/transactions.*\"}[1m])) by (le)) * 1000", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] }, "unit": "percentunit" } },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "id": 52,
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Error Rate",
+      "type": "stat",
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\"}[5m]))", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "id": 53,
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Total Transactions (5m)",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(http_server_requests_seconds_count{job=\"ingestion-service\",uri=~\"/v1/transactions.*\"}[5m]))", "refId": "A" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 201,
+      "title": "Fraud Scoring Pipeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "gradientMode": "scheme", "showPoints": "never" }, "unit": "ms" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "id": 60,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "title": "Scoring Latency Distribution",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"scoring-service\"}[1m])) by (le)) * 1000", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.90, sum(rate(http_server_requests_seconds_bucket{job=\"scoring-service\"}[1m])) by (le)) * 1000", "legendFormat": "p90", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"scoring-service\"}[1m])) by (le)) * 1000", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "id": 61,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "title": "Scoring Throughput",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"scoring-service\"}[1m]))", "legendFormat": "Total req/s", "refId": "A" },
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"scoring-service\",status=\"200\"}[1m]))", "legendFormat": "Success req/s", "refId": "B" },
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"scoring-service\",status=~\"5..\"}[1m]))", "legendFormat": "Error req/s", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 202,
+      "title": "Feature Store & Redis",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "ms" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 70,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "title": "Feature Store Latency",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"feature-store\"}[1m])) by (le)) * 1000", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"feature-store\"}[1m])) by (le)) * 1000", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 71,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "title": "Feature Store Request Rate by Endpoint",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"feature-store\"}[1m])) by (uri)", "legendFormat": "{{uri}}", "refId": "A" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 203,
+      "title": "3DS Authentication & Audit",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "ms" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "id": 80,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "title": "3DS Service Latency",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"threeds-service\"}[1m])) by (le)) * 1000", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"threeds-service\"}[1m])) by (le)) * 1000", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "id": 81,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "title": "Audit Service Processing Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"audit-service\"}[1m])) by (uri)", "legendFormat": "{{uri}}", "refId": "A" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cosmos", "fraud-detection", "scoring"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Cosmos Fraud Detection - Scoring Pipeline",
+  "uid": "cosmos-fraud-scoring",
+  "version": 1
+}
