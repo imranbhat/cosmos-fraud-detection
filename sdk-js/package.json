@@ -1,0 +1,52 @@
+{
+  "name": "@cosmos/fraud-sdk-js",
+  "version": "1.0.0",
+  "description": "Cosmos Fraud Detection JavaScript SDK for browser fingerprinting and behavioral signals",
+  "main": "dist/fraud-sdk.umd.js",
+  "module": "dist/fraud-sdk.esm.js",
+  "types": "dist/types.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "test": "jest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "fraud-detection",
+    "fingerprinting",
+    "behavioral-analytics",
+    "cosmos"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/jest": "^29.5.12",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "rollup": "^4.18.0",
+    "ts-jest": "^29.1.4",
+    "typescript": "^5.4.5"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ],
+    "globals": {
+      "ts-jest": {
+        "tsconfig": {
+          "target": "ES2020",
+          "lib": ["ES2020", "DOM"],
+          "esModuleInterop": true
+        }
+      }
+    }
+  }
+}
