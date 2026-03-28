@@ -1,0 +1,290 @@
+openapi: 3.1.0
+
+info:
+  title: Audit API
+  description: |
+    Provides read-only access to the immutable audit trail for individual
+    transactions. Audit records capture every decision event in the fraud
+    detection lifecycle: ingestion, enrichment, scoring, 3DS assessment,
+    challenge outcome, and any subsequent review actions.
+
+    This API is intended for fraud investigators, compliance teams, and
+    dispute resolution workflows. All accesses are themselves logged.
+  version: 1.0.0
+  contact:
+    name: Cosmos Fraud Detection Team
+
+servers:
+  - url: https://api.cosmos-fraud.internal/v1
+    description: Internal production endpoint
+  - url: https://api-staging.cosmos-fraud.internal/v1
+    description: Staging
+
+tags:
+  - name: Audit
+    description: Transaction audit trail operations
+
+paths:
+  /transactions/{id}/audit:
+    get:
+      operationId: getTransactionAudit
+      summary: Retrieve the full audit trail for a transaction
+      description: |
+        Returns the complete, ordered sequence of audit events recorded
+        for the given transaction ID. Events are returned in chronological
+        order (earliest first).
+
+        Each event includes the service that generated it, the event type,
+        a timestamp, and a structured payload containing the relevant data
+        at that point in the pipeline.
+
+        **Authorization:** Requires the `audit:read` scope.
+        Access is restricted to fraud analysts, compliance officers, and
+        authorized internal services (e.g., dispute management).
+      tags:
+        - Audit
+      security:
+        - BearerAuth: [audit:read]
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Transaction ID (ULID or UUID)
+          schema:
+            type: string
+          example: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+        - name: eventTypes
+          in: query
+          required: false
+          description: |
+            Comma-separated list of event types to filter. If omitted,
+            all event types are returned.
+          schema:
+            type: string
+          example: "TRANSACTION_SCORED,THREEDS_ASSESSED"
+        - name: fromTimestamp
+          in: query
+          required: false
+          description: Filter events at or after this epoch millisecond timestamp
+          schema:
+            type: integer
+            format: int64
+          example: 1711613420000
+        - name: toTimestamp
+          in: query
+          required: false
+          description: Filter events at or before this epoch millisecond timestamp
+          schema:
+            type: integer
+            format: int64
+          example: 1711613500000
+      responses:
+        '200':
+          description: Audit trail retrieved successfully
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+            X-Total-Events:
+              schema:
+                type: integer
+              description: Total number of audit events for this transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTrailResponse'
+              examples:
+                full_lifecycle:
+                  summary: Full transaction lifecycle audit trail
+                  value:
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+                    cardId: "card_4111111111111111"
+                    eventCount: 4
+                    events:
+                      - eventId: "evt_01HX4K9VQ3B5JRMYK0GNW8AAA1"
+                        eventType: "TRANSACTION_INGESTED"
+                        serviceName: "ingestion-service"
+                        timestamp: 1711613422005
+                        payload:
+                          merchantId: "merch_costco_us_001"
+                          amount: 142.50
+                          currency: "USD"
+                          country: "US"
+                          channel: "CARD_PRESENT"
+                          kafkaOffset: 184921
+                          kafkaTopic: "transactions.raw"
+                          kafkaPartition: 12
+                      - eventId: "evt_01HX4K9VQ3B5JRMYK0GNW8BBB2"
+                        eventType: "TRANSACTION_ENRICHED"
+                        serviceName: "flink-processor"
+                        timestamp: 1711613422014
+                        payload:
+                          featureVector:
+                            tx_count_1h: 1
+                            tx_count_24h: 4
+                            avg_amount_7d: 98.20
+                            velocity_score: 0.08
+                            geo_anomaly_score: 0.02
+                          enrichmentVersion: "v2.3.1"
+                      - eventId: "evt_01HX4K9VQ3B5JRMYK0GNW8CCC3"
+                        eventType: "TRANSACTION_SCORED"
+                        serviceName: "scoring-service"
+                        timestamp: 1711613422023
+                        payload:
+                          riskScore: 0.04
+                          riskBand: "LOW"
+                          recommendedAction: "APPROVE"
+                          rulesTriggered: []
+                          modelVersion: "fraud-xgb-v4.2.1"
+                          scoringLatencyMs: 18
+                          fallback: false
+                      - eventId: "evt_01HX4K9VQ3B5JRMYK0GNW8DDD4"
+                        eventType: "DECISION_FINALIZED"
+                        serviceName: "audit-service"
+                        timestamp: 1711613422028
+                        payload:
+                          finalDecision: "APPROVE"
+                          responseLatencyMs: 28
+                          authorizationCode: "AUTH_OK"
+        '400':
+          description: Invalid transaction ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions (audit:read scope required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuditTrailResponse:
+      type: object
+      required:
+        - transactionId
+        - eventCount
+        - events
+      properties:
+        transactionId:
+          type: string
+          description: The transaction identifier
+          example: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+        cardId:
+          type: string
+          description: Tokenized card identifier (masked for non-privileged callers)
+          example: "card_4111111111111111"
+        eventCount:
+          type: integer
+          description: Total number of events in this response (after filtering)
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+
+    AuditEvent:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - serviceName
+        - timestamp
+        - payload
+      properties:
+        eventId:
+          type: string
+          description: Unique event identifier (ULID)
+          example: "evt_01HX4K9VQ3B5JRMYK0GNW8AAA1"
+        eventType:
+          type: string
+          enum:
+            - TRANSACTION_INGESTED
+            - TRANSACTION_ENRICHED
+            - TRANSACTION_SCORED
+            - THREEDS_ASSESSED
+            - THREEDS_CHALLENGE_INITIATED
+            - THREEDS_CHALLENGE_COMPLETED
+            - DECISION_FINALIZED
+            - MANUAL_REVIEW_QUEUED
+            - MANUAL_REVIEW_COMPLETED
+            - FRAUD_CONFIRMED
+            - CHARGEBACK_RECEIVED
+          description: Type of audit event
+        serviceName:
+          type: string
+          description: Name of the service that generated this event
+          example: "scoring-service"
+        timestamp:
+          type: integer
+          format: int64
+          description: Event timestamp as Unix epoch milliseconds
+          example: 1711613422023
+        payload:
+          type: object
+          description: |
+            Structured event-specific data. Schema varies by `eventType`.
+            Common fields include scores, decisions, latencies, and
+            Kafka coordinates for pipeline tracing.
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+          example: "TRANSACTION_NOT_FOUND"
+        message:
+          type: string
+          example: "No transaction found with ID txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+        requestId:
+          type: string
+          format: uuid
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string

@@ -1,0 +1,474 @@
+openapi: 3.1.0
+
+info:
+  title: 3DS Service API
+  description: |
+    EMV 3-D Secure (3DS2) risk assessment and challenge result handling.
+    The 3DS Service integrates with card network directory servers and
+    returns risk indicators and authentication recommendations to support
+    frictionless and challenge flows.
+  version: 1.0.0
+  contact:
+    name: Cosmos Fraud Detection Team
+
+servers:
+  - url: https://api.cosmos-fraud.internal/v1
+    description: Internal production endpoint
+  - url: https://api-staging.cosmos-fraud.internal/v1
+    description: Staging
+
+tags:
+  - name: 3DS
+    description: EMV 3-D Secure operations
+
+paths:
+  /threeds/risk-assessment:
+    post:
+      operationId: assess3DSRisk
+      summary: Assess 3DS risk for a transaction
+      description: |
+        Performs EMV 3DS risk assessment for a card transaction. Returns
+        risk indicators that determine whether a frictionless or challenge
+        flow should be triggered. This endpoint is called by the ACS
+        (Access Control Server) or card network directory server as part
+        of the 3DS authentication request (AReq) processing.
+
+        **Latency SLA:** p99 <30ms.
+      tags:
+        - 3DS
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreeDSRiskAssessmentRequest'
+            examples:
+              standard_cnp:
+                summary: Card-not-present 3DS assessment
+                value:
+                  threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                  transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+                  cardId: "card_4111111111111111"
+                  amount: 899.99
+                  currency: "USD"
+                  merchantId: "merch_amazon_us"
+                  merchantCategory: "5999"
+                  country: "US"
+                  deviceChannel: "BRW"
+                  browserInfo:
+                    colorDepth: 24
+                    javaEnabled: false
+                    language: "en-US"
+                    screenHeight: 1080
+                    screenWidth: 1920
+                    timeZoneOffset: -300
+                    userAgent: "Mozilla/5.0 ..."
+                  deviceFingerprint: "a1b2c3d4e5f6..."
+                  ipAddress: "203.0.113.42"
+                  timestamp: 1711613422000
+      responses:
+        '200':
+          description: Risk assessment completed
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreeDSRiskAssessmentResponse'
+              examples:
+                frictionless:
+                  summary: Low risk — frictionless recommended
+                  value:
+                    threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+                    transStatus: "Y"
+                    transStatusReason: null
+                    authenticationFlow: "FRICTIONLESS"
+                    riskScore: 0.09
+                    riskIndicators:
+                      shippingAddressUsageIndicator: "CURRENT_TRANSACTION"
+                      addressMatch: "Y"
+                      activityLast24Hours: "02"
+                      activityLastYear: "14"
+                      suspiciousActivityIndicator: "NO_SUSPICIOUS_ACTIVITY"
+                    assessedAt: 1711613422028
+                challenge:
+                  summary: High risk — challenge required
+                  value:
+                    threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                    transStatus: "C"
+                    transStatusReason: "19"
+                    authenticationFlow: "CHALLENGE"
+                    riskScore: 0.76
+                    riskIndicators:
+                      shippingAddressUsageIndicator: "LESS_THAN_30_DAYS"
+                      addressMatch: "N"
+                      activityLast24Hours: "07"
+                      suspiciousActivityIndicator: "SUSPICIOUS_ACTIVITY"
+                    assessedAt: 1711613422031
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /threeds/challenge-result:
+    post:
+      operationId: submitChallengeResult
+      summary: Submit the result of a 3DS challenge
+      description: |
+        Called by the ACS after a cardholder completes (or abandons) a
+        3DS challenge. Updates the transaction state with the challenge
+        outcome and publishes the result to `fraud.decisions` for audit
+        and downstream processing.
+      tags:
+        - 3DS
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreeDSChallengeResultRequest'
+            examples:
+              authenticated:
+                summary: Challenge passed
+                value:
+                  threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                  transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                  acsTransId: "acs_9f8e7d6c5b4a..."
+                  transStatus: "Y"
+                  challengeCompletionTime: 1711613480000
+                  authenticationValue: "AAABBIIFmAAAAAAAAAAAAAAAAAA="
+                  eci: "05"
+              failed:
+                summary: Challenge failed
+                value:
+                  threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                  transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                  acsTransId: "acs_9f8e7d6c5b4a..."
+                  transStatus: "N"
+                  transStatusReason: "01"
+                  challengeCompletionTime: 1711613490000
+      responses:
+        '200':
+          description: Challenge result recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreeDSChallengeResultResponse'
+              examples:
+                authenticated:
+                  summary: Authentication successful
+                  value:
+                    threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                    outcome: "AUTHENTICATED"
+                    recommendedAction: "APPROVE"
+                    processedAt: 1711613480050
+                denied:
+                  summary: Authentication failed — decline recommended
+                  value:
+                    threeDSServerTransId: "3ds_01HX5K9VQ3B5JRMYK0GNW8EPTF"
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                    outcome: "NOT_AUTHENTICATED"
+                    recommendedAction: "DECLINE"
+                    processedAt: 1711613490060
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transaction not found or 3DS session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ThreeDSRiskAssessmentRequest:
+      type: object
+      required:
+        - threeDSServerTransId
+        - transactionId
+        - cardId
+        - amount
+        - currency
+        - merchantId
+        - merchantCategory
+        - country
+        - deviceChannel
+        - timestamp
+      properties:
+        threeDSServerTransId:
+          type: string
+          description: 3DS Server Transaction ID assigned by the directory server
+        transactionId:
+          type: string
+          description: Correlation ID matching the transaction scoring request
+        cardId:
+          type: string
+          description: Tokenized card identifier
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        merchantId:
+          type: string
+        merchantCategory:
+          type: string
+          pattern: '^\d{4}$'
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        deviceChannel:
+          type: string
+          enum:
+            - APP   # App-based (SDK)
+            - BRW   # Browser
+            - 3RI   # 3DS Requestor Initiated (recurring)
+          description: EMV 3DS device channel
+        browserInfo:
+          $ref: '#/components/schemas/BrowserInfo'
+        sdkInfo:
+          $ref: '#/components/schemas/SDKInfo'
+        deviceFingerprint:
+          type: string
+        ipAddress:
+          type: string
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        timestamp:
+          type: integer
+          format: int64
+
+    BrowserInfo:
+      type: object
+      properties:
+        colorDepth:
+          type: integer
+        javaEnabled:
+          type: boolean
+        language:
+          type: string
+        screenHeight:
+          type: integer
+        screenWidth:
+          type: integer
+        timeZoneOffset:
+          type: integer
+          description: UTC offset in minutes
+        userAgent:
+          type: string
+
+    SDKInfo:
+      type: object
+      properties:
+        sdkAppId:
+          type: string
+        sdkEncData:
+          type: string
+        sdkReferenceNumber:
+          type: string
+        sdkTransId:
+          type: string
+
+    Address:
+      type: object
+      properties:
+        line1:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+
+    ThreeDSRiskAssessmentResponse:
+      type: object
+      required:
+        - threeDSServerTransId
+        - transactionId
+        - transStatus
+        - authenticationFlow
+        - riskScore
+        - assessedAt
+      properties:
+        threeDSServerTransId:
+          type: string
+        transactionId:
+          type: string
+        transStatus:
+          type: string
+          enum:
+            - Y   # Authentication / Account Verification Successful
+            - N   # Not Authenticated
+            - U   # Authentication / Account Verification Could Not Be Performed
+            - C   # Challenge Required
+            - R   # Authentication / Account Verification Rejected
+          description: EMV 3DS transaction status
+        transStatusReason:
+          type: string
+          nullable: true
+          description: EMV 3DS transaction status reason code (01–99)
+        authenticationFlow:
+          type: string
+          enum:
+            - FRICTIONLESS
+            - CHALLENGE
+            - DECOUPLED
+            - REJECTED
+        riskScore:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        riskIndicators:
+          type: object
+          additionalProperties:
+            type: string
+          description: EMV 3DS risk indicator fields returned to the ACS
+        assessedAt:
+          type: integer
+          format: int64
+
+    ThreeDSChallengeResultRequest:
+      type: object
+      required:
+        - threeDSServerTransId
+        - transactionId
+        - acsTransId
+        - transStatus
+        - challengeCompletionTime
+      properties:
+        threeDSServerTransId:
+          type: string
+        transactionId:
+          type: string
+        acsTransId:
+          type: string
+          description: ACS Transaction ID
+        transStatus:
+          type: string
+          enum: [Y, N, U, A, R]
+          description: Challenge outcome status
+        transStatusReason:
+          type: string
+          nullable: true
+        challengeCompletionTime:
+          type: integer
+          format: int64
+          description: Timestamp when the challenge was completed (epoch ms)
+        authenticationValue:
+          type: string
+          nullable: true
+          description: Base64-encoded authentication value (CAVV) on success
+        eci:
+          type: string
+          nullable: true
+          description: Electronic Commerce Indicator
+
+    ThreeDSChallengeResultResponse:
+      type: object
+      required:
+        - threeDSServerTransId
+        - transactionId
+        - outcome
+        - recommendedAction
+        - processedAt
+      properties:
+        threeDSServerTransId:
+          type: string
+        transactionId:
+          type: string
+        outcome:
+          type: string
+          enum:
+            - AUTHENTICATED
+            - NOT_AUTHENTICATED
+            - ATTEMPTS_PROCESSING
+            - DECOUPLED_AUTHENTICATION
+            - REJECTED
+        recommendedAction:
+          type: string
+          enum:
+            - APPROVE
+            - DECLINE
+            - REVIEW
+        processedAt:
+          type: integer
+          format: int64
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string

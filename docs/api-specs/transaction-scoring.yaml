@@ -1,0 +1,341 @@
+openapi: 3.1.0
+
+info:
+  title: Transaction Scoring API
+  description: |
+    Real-time fraud risk scoring for card transactions. Returns a risk score,
+    risk band, and recommended authorization action within the synchronous
+    authorization window (<50ms p99).
+  version: 1.0.0
+  contact:
+    name: Cosmos Fraud Detection Team
+
+servers:
+  - url: https://api.cosmos-fraud.internal/v1
+    description: Internal production endpoint
+  - url: https://api-staging.cosmos-fraud.internal/v1
+    description: Staging
+
+tags:
+  - name: Scoring
+    description: Transaction risk scoring operations
+
+paths:
+  /transactions/score:
+    post:
+      operationId: scoreTransaction
+      summary: Score a transaction for fraud risk
+      description: |
+        Submits a card transaction for real-time fraud risk assessment.
+        The response includes a risk score (0.0–1.0), risk band, and a
+        recommended action. The caller should act on `recommendedAction`
+        when making the authorization decision.
+
+        **Latency SLA:** p50 <20ms, p99 <50ms.
+
+        **Timeout behaviour:** If the ML model is unavailable, the system
+        falls back to rule-only scoring. A `fallback: true` field in the
+        response indicates this path was taken.
+      tags:
+        - Scoring
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionScoreRequest'
+            examples:
+              card_present:
+                summary: Card-present POS transaction
+                value:
+                  transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+                  cardId: "card_4111111111111111"
+                  merchantId: "merch_costco_us_001"
+                  merchantCategory: "5411"
+                  amount: 142.50
+                  currency: "USD"
+                  country: "US"
+                  channel: "CARD_PRESENT"
+                  deviceFingerprint: "d3a9f1b2c8e4..."
+                  ipAddress: "192.168.1.100"
+                  timestamp: 1711613422000
+              cnp_web:
+                summary: Card-not-present e-commerce transaction
+                value:
+                  transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                  cardId: "card_4111111111111111"
+                  merchantId: "merch_amazon_us"
+                  merchantCategory: "5999"
+                  amount: 899.99
+                  currency: "USD"
+                  country: "US"
+                  channel: "CNP_WEB"
+                  deviceFingerprint: "a1b2c3d4e5f6..."
+                  ipAddress: "203.0.113.42"
+                  billingZip: "98101"
+                  timestamp: 1711613422000
+      responses:
+        '200':
+          description: Scoring completed successfully
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+              description: Unique identifier for this request, useful for tracing
+            X-Scoring-Latency-Ms:
+              schema:
+                type: integer
+              description: Server-side scoring latency in milliseconds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionScoreResponse'
+              examples:
+                low_risk:
+                  summary: Low-risk approval
+                  value:
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+                    riskScore: 0.04
+                    riskBand: "LOW"
+                    recommendedAction: "APPROVE"
+                    rulesTriggered: []
+                    modelVersion: "fraud-xgb-v4.2.1"
+                    scoringLatencyMs: 18
+                    fallback: false
+                    decidedAt: 1711613422023
+                high_risk_challenge:
+                  summary: High risk — 3DS challenge recommended
+                  value:
+                    transactionId: "txn_01HX4K9VQ3B5JRMYK0GNW8XYZW"
+                    riskScore: 0.78
+                    riskBand: "HIGH"
+                    recommendedAction: "CHALLENGE_3DS"
+                    rulesTriggered: ["RULE_HIGH_AMOUNT_NEW_DEVICE", "RULE_VELOCITY_SPIKE"]
+                    modelVersion: "fraud-xgb-v4.2.1"
+                    scoringLatencyMs: 31
+                    fallback: false
+                    decidedAt: 1711613422055
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds until the rate limit resets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    TransactionScoreRequest:
+      type: object
+      required:
+        - transactionId
+        - cardId
+        - merchantId
+        - merchantCategory
+        - amount
+        - currency
+        - country
+        - channel
+        - timestamp
+      properties:
+        transactionId:
+          type: string
+          description: Globally unique transaction identifier (ULID or UUID)
+          example: "txn_01HX4K9VQ3B5JRMYK0GNW8EPTF"
+        cardId:
+          type: string
+          description: Tokenized card identifier (PAN token, never raw PAN)
+          example: "card_4111111111111111"
+        merchantId:
+          type: string
+          description: Merchant identifier
+          example: "merch_costco_us_001"
+        merchantCategory:
+          type: string
+          pattern: '^\d{4}$'
+          description: ISO 18245 Merchant Category Code (MCC)
+          example: "5411"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          description: Transaction amount in the specified currency
+          example: 142.50
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 currency code
+          example: "USD"
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          description: ISO 3166-1 alpha-2 country code of the transaction
+          example: "US"
+        channel:
+          type: string
+          enum:
+            - CARD_PRESENT
+            - CNP_WEB
+            - CNP_APP
+            - RECURRING
+          description: Transaction channel
+        deviceFingerprint:
+          type: string
+          description: Hashed device fingerprint (SHA-256 hex string)
+          example: "d3a9f1b2c8e4a7f0..."
+        ipAddress:
+          type: string
+          format: ipv4
+          description: Client IP address (IPv4 or IPv6)
+          example: "203.0.113.42"
+        billingZip:
+          type: string
+          description: Billing postal code (CNP transactions)
+          example: "98101"
+        timestamp:
+          type: integer
+          format: int64
+          description: Transaction timestamp as Unix epoch milliseconds
+          example: 1711613422000
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional key-value pairs for pass-through context
+
+    TransactionScoreResponse:
+      type: object
+      required:
+        - transactionId
+        - riskScore
+        - riskBand
+        - recommendedAction
+        - scoringLatencyMs
+        - fallback
+        - decidedAt
+      properties:
+        transactionId:
+          type: string
+          description: Echo of the request transactionId
+        riskScore:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Continuous risk score where 1.0 = highest fraud probability
+          example: 0.78
+        riskBand:
+          type: string
+          enum:
+            - LOW
+            - MEDIUM
+            - HIGH
+            - CRITICAL
+          description: |
+            Bucketed risk level:
+            - LOW: score < 0.3
+            - MEDIUM: score 0.3–0.6
+            - HIGH: score 0.6–0.85
+            - CRITICAL: score > 0.85
+        recommendedAction:
+          type: string
+          enum:
+            - APPROVE
+            - DECLINE
+            - CHALLENGE_3DS
+            - REVIEW
+          description: |
+            Recommended authorization action:
+            - APPROVE: Proceed with authorization
+            - DECLINE: Decline the transaction
+            - CHALLENGE_3DS: Trigger EMV 3DS step-up authentication
+            - REVIEW: Approve and queue for manual review
+        rulesTriggered:
+          type: array
+          items:
+            type: string
+          description: List of rule identifiers that contributed to the score
+          example: ["RULE_HIGH_AMOUNT_NEW_DEVICE", "RULE_VELOCITY_SPIKE"]
+        modelVersion:
+          type: string
+          description: Version of the ML model used for scoring
+          example: "fraud-xgb-v4.2.1"
+        scoringLatencyMs:
+          type: integer
+          description: Server-side latency for the scoring operation in milliseconds
+          example: 31
+        fallback:
+          type: boolean
+          description: True if rule-only fallback was used (ML model unavailable)
+          example: false
+        decidedAt:
+          type: integer
+          format: int64
+          description: Decision timestamp as Unix epoch milliseconds
+          example: 1711613422055
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "INVALID_CARD_ID"
+        message:
+          type: string
+          description: Human-readable error description
+          example: "cardId must be a valid PAN token"
+        requestId:
+          type: string
+          format: uuid
+          description: Request ID for correlation with server-side logs
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+          description: Field-level validation errors

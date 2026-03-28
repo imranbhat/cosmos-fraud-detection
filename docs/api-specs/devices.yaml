@@ -1,0 +1,338 @@
+openapi: 3.1.0
+
+info:
+  title: Device Fingerprinting API
+  description: |
+    Collects and scores device signals to build a device risk profile.
+    Device fingerprints are hashed, stored in Redis and ScyllaDB, and
+    used as features in fraud scoring. No raw PII is persisted.
+  version: 1.0.0
+  contact:
+    name: Cosmos Fraud Detection Team
+
+servers:
+  - url: https://api.cosmos-fraud.internal/v1
+    description: Internal production endpoint
+  - url: https://api-staging.cosmos-fraud.internal/v1
+    description: Staging
+
+tags:
+  - name: Devices
+    description: Device fingerprint collection and risk profiling
+
+paths:
+  /devices/fingerprint:
+    post:
+      operationId: submitDeviceFingerprint
+      summary: Submit a device fingerprint for risk profiling
+      description: |
+        Accepts raw device signals collected by the merchant's client-side
+        SDK or browser agent. The service normalizes, hashes, and stores
+        the fingerprint, then returns a device risk score and a stable
+        `deviceHash` that should be included in subsequent transaction
+        scoring requests.
+
+        This endpoint should be called before initiating a transaction,
+        typically at checkout page load or app launch.
+
+        **Idempotency:** Identical signal sets produce the same `deviceHash`.
+        Repeated submissions update the last-seen timestamp and refresh
+        the risk profile.
+      tags:
+        - Devices
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceFingerprintRequest'
+            examples:
+              browser_signals:
+                summary: Browser-collected device signals
+                value:
+                  sessionId: "sess_01HX6K9VQ3B5JRMYK0GNW8EPTF"
+                  cardId: "card_4111111111111111"
+                  channel: "CNP_WEB"
+                  signals:
+                    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ..."
+                    language: "en-US"
+                    platform: "MacIntel"
+                    screenResolution: "1920x1080"
+                    colorDepth: 24
+                    timezone: "America/Los_Angeles"
+                    timezoneOffset: -480
+                    cookiesEnabled: true
+                    doNotTrack: "1"
+                    plugins: ["PDF Viewer", "Chrome PDF Viewer"]
+                    canvas2dHash: "3f4a1b2c..."
+                    webglHash: "9e8d7c6b..."
+                    audioContextHash: "1a2b3c4d..."
+                    fontsHash: "5e6f7a8b..."
+                    hardwareConcurrency: 8
+                    deviceMemory: 8
+                    touchSupport: false
+                  ipAddress: "203.0.113.42"
+                  collectedAt: 1711613410000
+              mobile_app:
+                summary: Mobile app device signals
+                value:
+                  sessionId: "sess_01HX6K9VQ3B5JRMYK0GNW8XYZW"
+                  cardId: "card_4111111111111111"
+                  channel: "CNP_APP"
+                  signals:
+                    deviceModel: "iPhone 15 Pro"
+                    osName: "iOS"
+                    osVersion: "17.4.1"
+                    appVersion: "3.2.1"
+                    deviceId: "IDFV_masked_abc123"
+                    jailbroken: false
+                    vpnActive: false
+                    batteryLevel: 0.72
+                    networkType: "WIFI"
+                  ipAddress: "192.168.0.5"
+                  collectedAt: 1711613415000
+      responses:
+        '200':
+          description: Device fingerprint processed successfully
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceFingerprintResponse'
+              examples:
+                known_low_risk:
+                  summary: Known device, low risk
+                  value:
+                    sessionId: "sess_01HX6K9VQ3B5JRMYK0GNW8EPTF"
+                    deviceHash: "d3a9f1b2c8e4a7f0..."
+                    deviceRiskScore: 0.06
+                    isNewDevice: false
+                    cardCount: 1
+                    flagged: false
+                    processedAt: 1711613410012
+                new_high_risk:
+                  summary: New device with risk signals
+                  value:
+                    sessionId: "sess_01HX6K9VQ3B5JRMYK0GNW8XYZW"
+                    deviceHash: "a1b2c3d4e5f6a7b8..."
+                    deviceRiskScore: 0.61
+                    isNewDevice: true
+                    cardCount: 1
+                    flagged: false
+                    riskReasons: ["ANONYMIZING_PROXY", "TIMEZONE_MISMATCH"]
+                    processedAt: 1711613415018
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    DeviceFingerprintRequest:
+      type: object
+      required:
+        - sessionId
+        - channel
+        - signals
+        - ipAddress
+        - collectedAt
+      properties:
+        sessionId:
+          type: string
+          description: Client-generated session identifier for correlation
+          example: "sess_01HX6K9VQ3B5JRMYK0GNW8EPTF"
+        cardId:
+          type: string
+          description: Tokenized card ID if known at collection time (optional)
+          example: "card_4111111111111111"
+        channel:
+          type: string
+          enum:
+            - CNP_WEB
+            - CNP_APP
+            - CARD_PRESENT
+          description: Channel from which signals were collected
+        signals:
+          type: object
+          description: |
+            Raw device signals. Accepted fields vary by channel.
+            Unknown fields are stored as-is and may be used in future models.
+          properties:
+            # Browser signals
+            userAgent:
+              type: string
+            language:
+              type: string
+            platform:
+              type: string
+            screenResolution:
+              type: string
+              pattern: '^\d+x\d+$'
+            colorDepth:
+              type: integer
+            timezone:
+              type: string
+            timezoneOffset:
+              type: integer
+            cookiesEnabled:
+              type: boolean
+            doNotTrack:
+              type: string
+            plugins:
+              type: array
+              items:
+                type: string
+            canvas2dHash:
+              type: string
+            webglHash:
+              type: string
+            audioContextHash:
+              type: string
+            fontsHash:
+              type: string
+            hardwareConcurrency:
+              type: integer
+            deviceMemory:
+              type: number
+            touchSupport:
+              type: boolean
+            # Mobile app signals
+            deviceModel:
+              type: string
+            osName:
+              type: string
+            osVersion:
+              type: string
+            appVersion:
+              type: string
+            deviceId:
+              type: string
+              description: Masked IDFV or Android ID (never raw IDFA)
+            jailbroken:
+              type: boolean
+            vpnActive:
+              type: boolean
+            batteryLevel:
+              type: number
+              minimum: 0.0
+              maximum: 1.0
+            networkType:
+              type: string
+              enum: [WIFI, CELLULAR_4G, CELLULAR_5G, ETHERNET, UNKNOWN]
+          additionalProperties: true
+        ipAddress:
+          type: string
+          description: Client IP address at time of signal collection
+          example: "203.0.113.42"
+        collectedAt:
+          type: integer
+          format: int64
+          description: Timestamp when signals were collected (epoch ms)
+
+    DeviceFingerprintResponse:
+      type: object
+      required:
+        - sessionId
+        - deviceHash
+        - deviceRiskScore
+        - isNewDevice
+        - flagged
+        - processedAt
+      properties:
+        sessionId:
+          type: string
+          description: Echo of the request sessionId
+        deviceHash:
+          type: string
+          description: |
+            Stable SHA-256 hash of the normalized device fingerprint.
+            Include this value in subsequent transaction scoring requests.
+          example: "d3a9f1b2c8e4a7f0..."
+        deviceRiskScore:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Device-level risk score
+          example: 0.06
+        isNewDevice:
+          type: boolean
+          description: True if this device hash has not been seen before
+        cardCount:
+          type: integer
+          description: Number of distinct card tokens previously seen on this device
+          example: 1
+        flagged:
+          type: boolean
+          description: True if this device has been associated with confirmed fraud
+        riskReasons:
+          type: array
+          items:
+            type: string
+          description: |
+            Human-readable reasons contributing to a non-trivial risk score.
+            Examples: ANONYMIZING_PROXY, TIMEZONE_MISMATCH, EMULATOR_DETECTED,
+            HIGH_CARD_COUNT, JAILBROKEN_DEVICE
+        processedAt:
+          type: integer
+          format: int64
+          description: Processing timestamp (epoch ms)
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
