@@ -1,0 +1,16 @@
+{
+  "namespace": "com.cosmos.fraud.avro",
+  "type": "record",
+  "name": "DeviceFingerprint",
+  "fields": [
+    {"name": "fingerprintId", "type": "string"},
+    {"name": "cardId", "type": "string"},
+    {"name": "browserHash", "type": ["null", "string"], "default": null},
+    {"name": "canvasHash", "type": ["null", "string"], "default": null},
+    {"name": "webglHash", "type": ["null", "string"], "default": null},
+    {"name": "screenRes", "type": ["null", "string"], "default": null},
+    {"name": "timezone", "type": ["null", "string"], "default": null},
+    {"name": "behavioralSignals", "type": {"type": "map", "values": "string"}},
+    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+  ]
+}

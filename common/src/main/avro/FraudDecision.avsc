@@ -1,0 +1,15 @@
+{
+  "namespace": "com.cosmos.fraud.avro",
+  "type": "record",
+  "name": "FraudDecision",
+  "fields": [
+    {"name": "txId", "type": "string"},
+    {"name": "cardId", "type": "string"},
+    {"name": "riskScore", "type": "int"},
+    {"name": "decision", "type": {"type": "enum", "name": "Decision", "symbols": ["APPROVE", "DECLINE", "CHALLENGE"]}},
+    {"name": "appliedRules", "type": {"type": "array", "items": "string"}},
+    {"name": "modelScores", "type": {"type": "map", "values": "double"}},
+    {"name": "latencyMs", "type": "long"},
+    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+  ]
+}

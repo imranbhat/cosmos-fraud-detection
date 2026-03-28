@@ -1,0 +1,25 @@
+{
+  "namespace": "com.cosmos.fraud.avro",
+  "type": "record",
+  "name": "TransactionEvent",
+  "fields": [
+    {"name": "txId", "type": "string"},
+    {"name": "cardId", "type": "string"},
+    {"name": "merchantId", "type": "string"},
+    {"name": "amount", "type": "double"},
+    {"name": "currency", "type": "string"},
+    {"name": "mcc", "type": "string"},
+    {"name": "channel", "type": {"type": "enum", "name": "Channel", "symbols": ["POS", "ECOM", "ATM"]}},
+    {"name": "location", "type": {
+      "type": "record",
+      "name": "Location",
+      "fields": [
+        {"name": "lat", "type": "double"},
+        {"name": "lon", "type": "double"},
+        {"name": "country", "type": "string"}
+      ]
+    }},
+    {"name": "deviceFingerprint", "type": ["null", "string"], "default": null},
+    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+  ]
+}

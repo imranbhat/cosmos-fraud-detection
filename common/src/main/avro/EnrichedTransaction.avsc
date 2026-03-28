@@ -1,0 +1,34 @@
+{
+  "namespace": "com.cosmos.fraud.avro",
+  "type": "record",
+  "name": "EnrichedTransaction",
+  "fields": [
+    {"name": "txId", "type": "string"},
+    {"name": "cardId", "type": "string"},
+    {"name": "merchantId", "type": "string"},
+    {"name": "amount", "type": "double"},
+    {"name": "currency", "type": "string"},
+    {"name": "mcc", "type": "string"},
+    {"name": "channel", "type": {"type": "enum", "name": "Channel", "symbols": ["POS", "ECOM", "ATM"]}},
+    {"name": "location", "type": {
+      "type": "record",
+      "name": "Location",
+      "fields": [
+        {"name": "lat", "type": "double"},
+        {"name": "lon", "type": "double"},
+        {"name": "country", "type": "string"}
+      ]
+    }},
+    {"name": "deviceFingerprint", "type": ["null", "string"], "default": null},
+    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"},
+    {"name": "txCountOneHour", "type": "int", "default": 0},
+    {"name": "txCountSixHours", "type": "int", "default": 0},
+    {"name": "txCountTwentyFourHours", "type": "int", "default": 0},
+    {"name": "avgAmountSevenDays", "type": "double", "default": 0.0},
+    {"name": "distinctMerchantsTwentyFourHours", "type": "int", "default": 0},
+    {"name": "countryChanged", "type": "boolean", "default": false},
+    {"name": "timeSinceLastTxMs", "type": "long", "default": 0},
+    {"name": "velocityScore", "type": "double", "default": 0.0},
+    {"name": "deviceHash", "type": ["null", "string"], "default": null}
+  ]
+}
