@@ -1,0 +1,804 @@
+# =============================================================================
+# Cosmos Fraud Detection – Local Development Stack
+# Docker Compose v3.8
+#
+# Services:
+#   Infrastructure : Kafka (KRaft, 3 brokers), Schema Registry,
+#                    Redis Cluster (6 nodes), ScyllaDB (3 nodes),
+#                    ClickHouse
+#   Application    : ingestion-service, feature-store, scoring-service,
+#                    threeds-service, audit-service, gateway
+#   Observability  : Jaeger, Prometheus, Grafana
+#
+# Usage:
+#   docker compose --env-file .env up -d
+# =============================================================================
+
+version: "3.8"
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  fraud-detection-net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Named Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  kafka-data-1:
+  kafka-data-2:
+  kafka-data-3:
+  redis-data-1:
+  redis-data-2:
+  redis-data-3:
+  redis-data-4:
+  redis-data-5:
+  redis-data-6:
+  scylla-data-1:
+  scylla-data-2:
+  scylla-data-3:
+  clickhouse-data:
+  prometheus-data:
+  grafana-data:
+
+# ---------------------------------------------------------------------------
+# x- Anchors (reusable fragments)
+# ---------------------------------------------------------------------------
+x-kafka-common-env: &kafka-common-env
+  KAFKA_KRAFT_CLUSTER_ID: ${KAFKA_KRAFT_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  KAFKA_NUM_PARTITIONS: ${KAFKA_NUM_PARTITIONS:-6}
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+  KAFKA_LOG_RETENTION_HOURS: 168
+  KAFKA_LOG_SEGMENT_BYTES: 1073741824
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=20"
+  KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xmx512m -Xms256m}
+
+x-kafka-healthcheck: &kafka-healthcheck
+  test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+  interval: 15s
+  timeout: 10s
+  retries: 10
+  start_period: 30s
+
+x-app-common-env: &app-common-env
+  # Kafka
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+  SCHEMA_REGISTRY_URL: http://schema-registry:8081
+  # Redis Cluster
+  REDIS_HOST: redis-1
+  REDIS_PORT: 6379
+  SPRING_DATA_REDIS_HOST: redis-1
+  SPRING_DATA_REDIS_PORT: 6379
+  # ScyllaDB
+  SCYLLA_CONTACT_POINTS: scylla-1,scylla-2,scylla-3
+  SCYLLA_PORT: 9042
+  SCYLLA_DATACENTER: datacenter1
+  # ClickHouse
+  CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/default
+  CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-default}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+  # Tracing
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  OTEL_SERVICE_NAME: "cosmos-fraud-detection"
+  # Spring profile
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+  # JVM
+  JAVA_OPTS: ${APP_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0}
+
+services:
+
+  # ===========================================================================
+  # KAFKA – KRaft Mode (3 Brokers, no ZooKeeper)
+  # ===========================================================================
+
+  kafka-1:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    container_name: kafka-1
+    hostname: kafka-1
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data-1:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://kafka-1:29092,CONTROLLER://kafka-1:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9092
+    healthcheck:
+      <<: *kafka-healthcheck
+    restart: unless-stopped
+
+  kafka-2:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    container_name: kafka-2
+    hostname: kafka-2
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9093:9092"
+    volumes:
+      - kafka-data-2:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: PLAINTEXT://kafka-2:29092,CONTROLLER://kafka-2:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29092,PLAINTEXT_HOST://localhost:9093
+    healthcheck:
+      <<: *kafka-healthcheck
+    restart: unless-stopped
+
+  kafka-3:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    container_name: kafka-3
+    hostname: kafka-3
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9094:9092"
+    volumes:
+      - kafka-data-3:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: PLAINTEXT://kafka-3:29092,CONTROLLER://kafka-3:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:29092,PLAINTEXT_HOST://localhost:9094
+    healthcheck:
+      <<: *kafka-healthcheck
+    restart: unless-stopped
+
+  # ===========================================================================
+  # CONFLUENT SCHEMA REGISTRY
+  # Mapped to host port 18081 to avoid conflict with ingestion-service (8081)
+  # ===========================================================================
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:${KAFKA_VERSION:-7.6.1}
+    container_name: schema-registry
+    hostname: schema-registry
+    networks:
+      - fraud-detection-net
+    ports:
+      - "18081:8081"
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 3
+      SCHEMA_REGISTRY_DEBUG: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/subjects"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # REDIS CLUSTER – 3 Masters + 3 Replicas (ports 7001-7006)
+  # ===========================================================================
+
+  redis-1:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-1
+    hostname: redis-1
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7001:6379"
+    volumes:
+      - redis-data-1:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis-2:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-2
+    hostname: redis-2
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7002:6379"
+    volumes:
+      - redis-data-2:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis-3:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-3
+    hostname: redis-3
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7003:6379"
+    volumes:
+      - redis-data-3:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis-4:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-4
+    hostname: redis-4
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7004:6379"
+    volumes:
+      - redis-data-4:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis-5:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-5
+    hostname: redis-5
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7005:6379"
+    volumes:
+      - redis-data-5:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis-6:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-6
+    hostname: redis-6
+    networks:
+      - fraud-detection-net
+    ports:
+      - "7006:6379"
+    volumes:
+      - redis-data-6:/data
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # Initialise the Redis cluster once all 6 nodes are healthy.
+  # Runs once and exits; subsequent starts are no-ops because the cluster
+  # state is persisted in the named volumes.
+  redis-cluster-init:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis-cluster-init
+    networks:
+      - fraud-detection-net
+    depends_on:
+      redis-1:
+        condition: service_healthy
+      redis-2:
+        condition: service_healthy
+      redis-3:
+        condition: service_healthy
+      redis-4:
+        condition: service_healthy
+      redis-5:
+        condition: service_healthy
+      redis-6:
+        condition: service_healthy
+    # --cluster-replicas 1 → 3 masters, 3 replicas
+    command: >
+      sh -c "
+        echo 'Waiting for all Redis nodes to be ready...' &&
+        sleep 2 &&
+        redis-cli --cluster create
+          redis-1:6379 redis-2:6379 redis-3:6379
+          redis-4:6379 redis-5:6379 redis-6:6379
+          --cluster-replicas 1
+          --cluster-yes &&
+        echo 'Redis cluster initialised successfully.'
+      "
+    restart: on-failure
+
+  # ===========================================================================
+  # SCYLLADB – 3-node Cluster
+  # ===========================================================================
+
+  scylla-1:
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    container_name: scylla-1
+    hostname: scylla-1
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla-data-1:/var/lib/scylla
+    command: >
+      --seeds scylla-1
+      --listen-address scylla-1
+      --rpc-address scylla-1
+      --broadcast-rpc-address scylla-1
+      --developer-mode 1
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh scylla-1 9042 -e 'describe keyspaces' 2>/dev/null || exit 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
+
+  scylla-2:
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    container_name: scylla-2
+    hostname: scylla-2
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9043:9042"
+    volumes:
+      - scylla-data-2:/var/lib/scylla
+    command: >
+      --seeds scylla-1
+      --listen-address scylla-2
+      --rpc-address scylla-2
+      --broadcast-rpc-address scylla-2
+      --developer-mode 1
+    depends_on:
+      scylla-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh scylla-2 9042 -e 'describe keyspaces' 2>/dev/null || exit 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
+
+  scylla-3:
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    container_name: scylla-3
+    hostname: scylla-3
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9044:9042"
+    volumes:
+      - scylla-data-3:/var/lib/scylla
+    command: >
+      --seeds scylla-1
+      --listen-address scylla-3
+      --rpc-address scylla-3
+      --broadcast-rpc-address scylla-3
+      --developer-mode 1
+    depends_on:
+      scylla-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh scylla-3 9042 -e 'describe keyspaces' 2>/dev/null || exit 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # CLICKHOUSE
+  # ===========================================================================
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-24.3}
+    container_name: clickhouse
+    hostname: clickhouse
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USERNAME:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-fraud_analytics}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # APPLICATION SERVICES
+  # ===========================================================================
+
+  ingestion-service:
+    image: cosmos-fraud/ingestion-service:${APP_VERSION:-latest}
+    container_name: ingestion-service
+    hostname: ingestion-service
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: ingestion-service
+      SERVER_PORT: 8081
+      # Schema registry is available internally at http://schema-registry:8081
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  feature-store:
+    image: cosmos-fraud/feature-store:${APP_VERSION:-latest}
+    container_name: feature-store
+    hostname: feature-store
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8082:8082"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: feature-store
+      SERVER_PORT: 8082
+      # Redis Cluster mode – provide comma-separated cluster nodes
+      SPRING_DATA_REDIS_CLUSTER_NODES: redis-1:6379,redis-2:6379,redis-3:6379,redis-4:6379,redis-5:6379,redis-6:6379
+    depends_on:
+      redis-cluster-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  scoring-service:
+    image: cosmos-fraud/scoring-service:${APP_VERSION:-latest}
+    container_name: scoring-service
+    hostname: scoring-service
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8083:8083"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: scoring-service
+      SERVER_PORT: 8083
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_KAFKA_CONSUMER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_KAFKA_PRODUCER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  threeds-service:
+    image: cosmos-fraud/threeds-service:${APP_VERSION:-latest}
+    container_name: threeds-service
+    hostname: threeds-service
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8084:8084"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: threeds-service
+      SERVER_PORT: 8084
+      SCORING_SERVICE_URL: http://scoring-service:8083
+    depends_on:
+      scoring-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8084/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  audit-service:
+    image: cosmos-fraud/audit-service:${APP_VERSION:-latest}
+    container_name: audit-service
+    hostname: audit-service
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: audit-service
+      SERVER_PORT: 8085
+      SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # ScyllaDB
+      SCYLLA_CONTACT_POINTS: scylla-1,scylla-2,scylla-3
+      SCYLLA_KEYSPACE: fraud_audit
+      # ClickHouse
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/default
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      scylla-1:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8085/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  gateway:
+    image: cosmos-fraud/gateway:${APP_VERSION:-latest}
+    container_name: gateway
+    hostname: gateway
+    networks:
+      - fraud-detection-net
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *app-common-env
+      SPRING_APPLICATION_NAME: gateway
+      SERVER_PORT: 8080
+      # Route upstream services by container name
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://ingestion-service:8081
+      SPRING_CLOUD_GATEWAY_ROUTES_1_URI: http://feature-store:8082
+      SPRING_CLOUD_GATEWAY_ROUTES_2_URI: http://scoring-service:8083
+      SPRING_CLOUD_GATEWAY_ROUTES_3_URI: http://threeds-service:8084
+      SPRING_CLOUD_GATEWAY_ROUTES_4_URI: http://audit-service:8085
+      # Redis Cluster for rate limiting
+      SPRING_DATA_REDIS_CLUSTER_NODES: redis-1:6379,redis-2:6379,redis-3:6379,redis-4:6379,redis-5:6379,redis-6:6379
+      JWT_ISSUER_URI: ${JWT_ISSUER_URI:-https://auth.example.com/realms/cosmos}
+    depends_on:
+      ingestion-service:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+      scoring-service:
+        condition: service_healthy
+      threeds-service:
+        condition: service_healthy
+      audit-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # OBSERVABILITY
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Jaeger – Distributed Tracing
+  # UI: http://localhost:16686
+  # OTLP gRPC endpoint: localhost:4317
+  # ---------------------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:${JAEGER_VERSION:-1.54}
+    container_name: jaeger
+    hostname: jaeger
+    networks:
+      - fraud-detection-net
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver (bonus)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: ${JAEGER_MAX_TRACES:-10000}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Prometheus – Metrics Collection
+  # UI: http://localhost:9090
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.50.1}
+    container_name: prometheus
+    hostname: prometheus
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}"
+      - "--web.enable-lifecycle"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana – Dashboards
+  # UI: http://localhost:3000  (admin / admin by default)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-10.3.3}
+    container_name: grafana
+    hostname: grafana
+    networks:
+      - fraud-detection-net
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
