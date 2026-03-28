@@ -1,0 +1,192 @@
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "redis") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-redis-headless
+  replicas: {{ .Values.redis.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "redis") | nindent 6 }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        {{- include "cosmos-fraud-detection.serviceLabels" (list . "redis") | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-redis
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      initContainers:
+        - name: redis-cluster-init
+          image: {{ .Values.global.image.registry }}/cosmos/redis-init:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -ex
+              cp /readonly-config/redis.conf /etc/redis/redis.conf
+              echo "cluster-announce-ip $(hostname -i)" >> /etc/redis/redis.conf
+              echo "cluster-announce-port 6379" >> /etc/redis/redis.conf
+              echo "cluster-announce-bus-port 16379" >> /etc/redis/redis.conf
+          volumeMounts:
+            - name: config
+              mountPath: /readonly-config
+              readOnly: true
+            - name: redis-config
+              mountPath: /etc/redis
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          imagePullPolicy: IfNotPresent
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+            - name: cluster-bus
+              containerPort: 16379
+              protocol: TCP
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis-secrets
+                  key: redis-password
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $REDIS_PASSWORD ping | grep -q PONG
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $REDIS_PASSWORD ping | grep -q PONG
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+            - name: redis-config
+              mountPath: /etc/redis
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.55.0
+          args:
+            - --redis.addr=redis://localhost:6379
+            - --redis.password=$(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis-secrets
+                  key: redis-password
+          ports:
+            - name: metrics
+              containerPort: 9121
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-redis-config
+        - name: redis-config
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "redis") | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+        labels:
+          {{- include "cosmos-fraud-detection.serviceLabels" (list . "redis") | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 20Gi
+---
+# Headless service for StatefulSet DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      protocol: TCP
+      port: 6379
+      targetPort: redis
+    - name: cluster-bus
+      protocol: TCP
+      port: 16379
+      targetPort: cluster-bus
+---
+# Client-facing service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "cosmos-fraud-detection.serviceSelectorLabels" (list . "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      protocol: TCP
+      port: 6379
+      targetPort: redis
+{{- end }}

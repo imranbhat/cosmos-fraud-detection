@@ -1,0 +1,118 @@
+{{- if .Values.kafka.enabled }}
+{{/*
+  Strimzi Kafka CRD using KRaft mode (ZooKeeper-less).
+  Requires: https://strimzi.io/
+  Install CRDs: helm install strimzi-operator strimzi/strimzi-kafka-operator
+*/}}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: {{ .Release.Name }}-kafka
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cosmos-fraud-detection.serviceLabels" (list . "kafka") | nindent 4 }}
+spec:
+  kafka:
+    version: {{ .Values.kafka.version }}
+    replicas: {{ .Values.kafka.replicas }}
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls
+    config:
+      offsets.topic.replication.factor: {{ .Values.kafka.replicas }}
+      transaction.state.log.replication.factor: {{ .Values.kafka.replicas }}
+      transaction.state.log.min.isr: 2
+      default.replication.factor: {{ .Values.kafka.defaultReplicationFactor }}
+      min.insync.replicas: 2
+      num.partitions: {{ .Values.kafka.defaultPartitions }}
+      log.retention.hours: 168
+      log.segment.bytes: 1073741824
+      log.retention.check.interval.ms: 300000
+      compression.type: lz4
+      message.max.bytes: 1048576
+      replica.fetch.max.bytes: 1048576
+      auto.create.topics.enable: "false"
+      delete.topic.enable: "true"
+      inter.broker.protocol.version: {{ .Values.kafka.version | trimSuffix ".0" }}
+    storage:
+      {{- if eq .Values.kafka.storage.type "ephemeral" }}
+      type: ephemeral
+      {{- else }}
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: {{ .Values.kafka.storage.size }}
+          deleteClaim: false
+      {{- end }}
+    resources:
+      {{- toYaml .Values.kafka.resources | nindent 6 }}
+    readinessProbe:
+      initialDelaySeconds: 30
+      timeoutSeconds: 10
+    livenessProbe:
+      initialDelaySeconds: 30
+      timeoutSeconds: 10
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: {{ .Release.Name }}-kafka-metrics
+          key: kafka-metrics-config.yml
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    strimzi.io/name: {{ .Release.Name }}-kafka-kafka
+                topologyKey: kubernetes.io/hostname
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    userOperator:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+---
+# Default topics for fraud detection platform
+{{- $topics := list "transactions.raw" "transactions.enriched" "fraud.decisions" "fraud.alerts" "feature.updates" "audit.events" "threeds.requests" "threeds.responses" }}
+{{- range $topics }}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: {{ . | replace "." "-" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ $.Release.Name }}-kafka
+    {{- include "cosmos-fraud-detection.serviceLabels" (list $ "kafka") | nindent 4 }}
+spec:
+  partitions: {{ $.Values.kafka.defaultPartitions }}
+  replicas: {{ $.Values.kafka.defaultReplicationFactor }}
+  config:
+    retention.ms: 604800000
+    segment.bytes: 1073741824
+    compression.type: lz4
+    min.insync.replicas: 2
+---
+{{- end }}
+{{- end }}
