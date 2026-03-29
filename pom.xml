@@ -43,21 +43,21 @@
         <flink.version>2.2.0</flink.version>
         <flink-connector-kafka.version>4.0.1-2.0</flink-connector-kafka.version>
         <!-- lettuce version managed by Spring Boot parent -->
-        <scylla-driver.version>4.18.0.0</scylla-driver.version>
-        <clickhouse-jdbc.version>0.6.0</clickhouse-jdbc.version>
-        <resilience4j.version>2.2.0</resilience4j.version>
-        <opentelemetry.version>1.36.0</opentelemetry.version>
-        <onnxruntime.version>1.17.3</onnxruntime.version>
+        <scylla-driver.version>4.19.0.1</scylla-driver.version>
+        <clickhouse-jdbc.version>0.9.0</clickhouse-jdbc.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
+        <opentelemetry.version>1.51.0</opentelemetry.version>
+        <onnxruntime.version>1.22.0</onnxruntime.version>
         <avro.version>1.12.1</avro.version>
         <confluent.version>8.1.2</confluent.version>
         <!-- micrometer version managed by Spring Boot parent -->
-        <logstash-logback.version>7.4</logstash-logback.version>
+        <logstash-logback.version>8.1</logstash-logback.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
 
         <!-- Plugin versions -->
         <avro-maven-plugin.version>1.12.1</avro-maven-plugin.version>
-        <jib-maven-plugin.version>3.4.1</jib-maven-plugin.version>
-        <maven-shade-plugin.version>3.5.2</maven-shade-plugin.version>
+        <jib-maven-plugin.version>3.4.5</jib-maven-plugin.version>
+        <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -174,7 +174,7 @@
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
-                <version>1.19.7</version>
+                <version>1.21.3</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
