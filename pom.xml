@@ -40,7 +40,8 @@
 
         <!-- Dependency versions -->
         <!-- kafka-clients version managed by Spring Boot parent (4.1.2) -->
-        <flink.version>1.19.1</flink.version>
+        <flink.version>2.2.0</flink.version>
+        <flink-connector-kafka.version>4.0.1-2.0</flink-connector-kafka.version>
         <!-- lettuce version managed by Spring Boot parent -->
         <scylla-driver.version>4.18.0.0</scylla-driver.version>
         <clickhouse-jdbc.version>0.6.0</clickhouse-jdbc.version>
@@ -79,7 +80,7 @@
             <dependency>
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-connector-kafka</artifactId>
-                <version>${flink.version}</version>
+                <version>${flink-connector-kafka.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>

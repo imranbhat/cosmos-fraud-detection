@@ -40,7 +40,7 @@ class FraudAlertWindowFunctionTest {
         windowFunction = new FraudAlertWindowFunction(THRESHOLD);
         collector      = new ListCollector<>();
         window         = new TimeWindow(WINDOW_START_MS, WINDOW_END_MS);
-        context        = new StubContext(window);
+        context        = createStubContext(window);
     }
 
     // -----------------------------------------------------------------
@@ -206,27 +206,26 @@ class FraudAlertWindowFunctionTest {
      * Minimal {@link FraudAlertWindowFunction.Context} stub.
      * Only {@link #window()} is used by the function under test.
      */
-    static final class StubContext extends FraudAlertWindowFunction.Context {
+    static FraudAlertWindowFunction.Context createStubContext(TimeWindow window) {
+        FraudAlertWindowFunction fn = new FraudAlertWindowFunction(1);
+        return fn.new Context() {
+            @Override
+            public TimeWindow window() { return window; }
 
-        private final TimeWindow window;
+            @Override
+            public long currentProcessingTime() { return System.currentTimeMillis(); }
 
-        StubContext(TimeWindow window) {
-            this.window = window;
-        }
+            @Override
+            public long currentWatermark() { return window.getEnd(); }
 
-        @Override
-        public TimeWindow window() { return window; }
+            @Override
+            public org.apache.flink.api.common.state.KeyedStateStore windowState() { return null; }
 
-        @Override
-        public long currentProcessingTime() { return System.currentTimeMillis(); }
+            @Override
+            public org.apache.flink.api.common.state.KeyedStateStore globalState() { return null; }
 
-        @Override
-        public long currentWatermark() { return window.getEnd(); }
-
-        @Override
-        public <X> org.apache.flink.util.OutputTag<X> outputTag() { return null; }
-
-        @Override
-        public <X> void output(org.apache.flink.util.OutputTag<X> outputTag, X value) { /* no-op */ }
+            @Override
+            public <X> void output(org.apache.flink.util.OutputTag<X> outputTag, X value) { /* no-op */ }
+        };
     }
 }

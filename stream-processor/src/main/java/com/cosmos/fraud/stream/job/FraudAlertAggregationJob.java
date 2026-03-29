@@ -18,7 +18,6 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +54,7 @@ public final class FraudAlertAggregationJob {
     private static final Logger LOG = LoggerFactory.getLogger(FraudAlertAggregationJob.class);
 
     /** Tumbling window size for merchant-level decline aggregation. */
-    private static final Time WINDOW_SIZE = Time.minutes(5);
+    private static final Duration WINDOW_SIZE = Duration.ofMinutes(5);
 
     private FraudAlertAggregationJob() {
         // utility class — not instantiated

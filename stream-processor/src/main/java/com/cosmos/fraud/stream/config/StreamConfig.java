@@ -1,22 +1,20 @@
 package com.cosmos.fraud.stream.config;
 
-import org.apache.flink.api.java.utils.ParameterTool;
-
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 /**
  * Centralised configuration holder for the Cosmos Fraud stream-processor.
  * <p>
- * Configuration is read from Flink's {@link ParameterTool}, which unifies
- * command-line arguments, system properties, and properties files.
+ * Configuration is read from command-line arguments (key=value pairs) or
+ * a classpath properties file.
  *
  * <h3>Typical usage</h3>
  * <pre>{@code
- * ParameterTool params = ParameterTool.fromArgs(args)
- *         .mergeWith(ParameterTool.fromPropertiesFile("stream-processor.properties"));
- * StreamConfig config = StreamConfig.from(params);
+ * StreamConfig config = StreamConfig.fromArgs(args);
  * }</pre>
  *
  * <h3>Supported keys (with defaults)</h3>
@@ -106,48 +104,45 @@ public final class StreamConfig {
     // -----------------------------------------------------------------
 
     /**
-     * Creates a {@code StreamConfig} from a Flink {@link ParameterTool}.
+     * Creates a {@code StreamConfig} from a map of key-value pairs.
      *
-     * @param params Flink parameter tool (merged from CLI args + properties file)
+     * @param params configuration map
      * @return fully populated config instance
      */
-    public static StreamConfig from(ParameterTool params) {
+    public static StreamConfig from(Map<String, String> params) {
         return new StreamConfig(
-                params.get(KEY_KAFKA_BOOTSTRAP, DEFAULT_KAFKA_BOOTSTRAP),
-                params.get(KEY_SCHEMA_REGISTRY_URL, DEFAULT_SCHEMA_REGISTRY_URL),
-                params.get(KEY_CONSUMER_GROUP_ENRICH, DEFAULT_CONSUMER_GROUP_ENRICH),
-                params.get(KEY_CONSUMER_GROUP_ALERTS, DEFAULT_CONSUMER_GROUP_ALERTS),
-                params.get(KEY_FEATURE_STORE_URL, DEFAULT_FEATURE_STORE_URL),
-                params.getLong(KEY_FEATURE_STORE_TIMEOUT, DEFAULT_FEATURE_STORE_TIMEOUT),
-                params.getInt(KEY_ASYNC_CAPACITY, DEFAULT_ASYNC_CAPACITY),
-                params.getInt(KEY_ALERT_DECLINE_THRESHOLD, DEFAULT_ALERT_DECLINE_THRESHOLD),
-                params.getLong(KEY_CHECKPOINT_INTERVAL_MS, DEFAULT_CHECKPOINT_INTERVAL_MS)
+                params.getOrDefault(KEY_KAFKA_BOOTSTRAP, DEFAULT_KAFKA_BOOTSTRAP),
+                params.getOrDefault(KEY_SCHEMA_REGISTRY_URL, DEFAULT_SCHEMA_REGISTRY_URL),
+                params.getOrDefault(KEY_CONSUMER_GROUP_ENRICH, DEFAULT_CONSUMER_GROUP_ENRICH),
+                params.getOrDefault(KEY_CONSUMER_GROUP_ALERTS, DEFAULT_CONSUMER_GROUP_ALERTS),
+                params.getOrDefault(KEY_FEATURE_STORE_URL, DEFAULT_FEATURE_STORE_URL),
+                Long.parseLong(params.getOrDefault(KEY_FEATURE_STORE_TIMEOUT, String.valueOf(DEFAULT_FEATURE_STORE_TIMEOUT))),
+                Integer.parseInt(params.getOrDefault(KEY_ASYNC_CAPACITY, String.valueOf(DEFAULT_ASYNC_CAPACITY))),
+                Integer.parseInt(params.getOrDefault(KEY_ALERT_DECLINE_THRESHOLD, String.valueOf(DEFAULT_ALERT_DECLINE_THRESHOLD))),
+                Long.parseLong(params.getOrDefault(KEY_CHECKPOINT_INTERVAL_MS, String.valueOf(DEFAULT_CHECKPOINT_INTERVAL_MS)))
         );
     }
 
     /**
-     * Creates a {@code StreamConfig} by merging CLI args with a properties file
-     * loaded from the classpath.
+     * Parses CLI arguments in {@code --key value} or {@code key=value} format
+     * into a {@code StreamConfig}.
      *
-     * @param args           command-line arguments passed to {@code main()}
-     * @param propertiesFile classpath resource name (e.g. "stream-processor.properties")
+     * @param args command-line arguments
      * @return fully populated config instance
-     * @throws IOException if the properties file cannot be read
      */
-    public static StreamConfig fromArgsAndClasspath(String[] args, String propertiesFile)
-            throws IOException {
-        ParameterTool fromArgs = ParameterTool.fromArgs(args);
-        Properties props = new Properties();
-        try (InputStream is = StreamConfig.class.getClassLoader()
-                .getResourceAsStream(propertiesFile)) {
-            if (is != null) {
-                props.load(is);
+    public static StreamConfig fromArgs(String[] args) {
+        Map<String, String> params = new HashMap<>();
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if (arg.contains("=")) {
+                String key = arg.startsWith("--") ? arg.substring(2, arg.indexOf('=')) : arg.substring(0, arg.indexOf('='));
+                String value = arg.substring(arg.indexOf('=') + 1);
+                params.put(key, value);
+            } else if (arg.startsWith("--") && i + 1 < args.length) {
+                params.put(arg.substring(2), args[++i]);
             }
         }
-        ParameterTool merged = ParameterTool.fromPropertiesFile(
-                propertiesFile.startsWith("/") ? propertiesFile : propertiesFile)
-                .mergeWith(fromArgs);
-        return from(merged);
+        return from(params);
     }
 
     /**

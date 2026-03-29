@@ -2,7 +2,7 @@ package com.cosmos.fraud.stream.function;
 
 import com.cosmos.fraud.stream.model.EnrichedTransaction;
 import com.cosmos.fraud.stream.model.TransactionEvent;
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.streaming.api.functions.async.ResultFuture;
 import org.apache.flink.streaming.api.functions.async.RichAsyncFunction;
 import org.slf4j.Logger;
@@ -77,8 +77,8 @@ public final class FeatureEnrichmentAsyncFunction
      * Initialises the shared HTTP client and JSON mapper.
      */
     @Override
-    public void open(Configuration parameters) throws Exception {
-        super.open(parameters);
+    public void open(OpenContext openContext) throws Exception {
+        super.open(openContext);
         httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(timeoutMs))
                 .build();

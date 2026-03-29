@@ -57,13 +57,10 @@ class TransactionEnrichmentJobTest {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
         // Simulate config that would be built from CLI args in production
-        org.apache.flink.api.java.utils.ParameterTool params =
-                org.apache.flink.api.java.utils.ParameterTool.fromMap(
-                        java.util.Map.of(
-                                StreamConfig.KEY_KAFKA_BOOTSTRAP,   "broker1:9092,broker2:9092",
-                                StreamConfig.KEY_FEATURE_STORE_URL, "http://feature-store.svc:8080",
-                                StreamConfig.KEY_ASYNC_CAPACITY,    "50"));
-        StreamConfig config = StreamConfig.from(params);
+        StreamConfig config = StreamConfig.from(java.util.Map.of(
+                StreamConfig.KEY_KAFKA_BOOTSTRAP,   "broker1:9092,broker2:9092",
+                StreamConfig.KEY_FEATURE_STORE_URL, "http://feature-store.svc:8080",
+                StreamConfig.KEY_ASYNC_CAPACITY,    "50"));
 
         assertThatNoException().isThrownBy(
                 () -> TransactionEnrichmentJob.buildPipeline(env, config));
