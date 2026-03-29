@@ -84,7 +84,7 @@ A production-grade, real-time fraud detection platform for card-issuing banks. P
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Language | Java | 21 (with preview features) |
+| Language | Java | 25 (LTS) |
 | Framework | Spring Boot | 4.0.5 |
 | Build Tool | Apache Maven | 3.9+ (multi-module) |
 | Event Streaming | Apache Kafka | 4.1.2 (KRaft, no Zookeeper) |
@@ -104,7 +104,7 @@ A production-grade, real-time fraud detection platform for card-issuing banks. P
 
 ```
 cosmos-fraud-detection/
-├── pom.xml                        # Parent POM (Java 21, Spring Boot 4.0 BOM)
+├── pom.xml                        # Parent POM (Java 25, Spring Boot 4.0 BOM)
 ├── common/                        # Shared DTOs, Avro schemas, security, Kafka config
 ├── ingestion-service/             # Transaction intake, Kafka producer, sync scoring
 ├── feature-store/                 # Redis-backed feature computation (Lua scripts)
@@ -126,7 +126,7 @@ cosmos-fraud-detection/
 ### common/
 Shared foundation for all Java services:
 - **Avro Schemas**: `TransactionEvent`, `EnrichedTransaction`, `FraudDecision`, `DeviceFingerprint`
-- **DTOs**: `TransactionRequest`, `ScoringResponse`, `ErrorResponse` (Java 21 records)
+- **DTOs**: `TransactionRequest`, `ScoringResponse`, `ErrorResponse` (Java records)
 - **Filters**: `CorrelationIdFilter` (MDC propagation), `JwtAuthenticationFilter`
 - **Kafka**: `KafkaConfig` (Confluent Avro serializers), `KafkaTopics` constants
 - **Utils**: `IdGenerator` (monotonic ULID for time-sortable transaction IDs)
@@ -304,7 +304,7 @@ const result = await send();
 ## Getting Started
 
 ### Prerequisites
-- Java 21 (Temurin recommended)
+- Java 25 (Temurin recommended)
 - Maven 3.9+ (or use included wrapper after setup)
 - Docker & Docker Compose (for local infrastructure)
 - Node.js 20+ (for SDKs)

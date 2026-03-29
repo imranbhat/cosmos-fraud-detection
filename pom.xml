@@ -33,9 +33,9 @@
     </modules>
 
     <properties>
-        <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <java.version>25</java.version>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
@@ -213,14 +213,14 @@
     <build>
         <pluginManagement>
             <plugins>
-                <!-- Maven Compiler Plugin with Java 21 -->
+                <!-- Maven Compiler Plugin with Java 25 -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <configuration>
-                        <source>21</source>
-                        <target>21</target>
-                        <release>21</release>
+                        <source>25</source>
+                        <target>25</target>
+                        <release>25</release>
                     </configuration>
                 </plugin>
 
@@ -343,7 +343,7 @@
                         <version>${jib-maven-plugin.version}</version>
                         <configuration>
                             <from>
-                                <image>eclipse-temurin:21-jre</image>
+                                <image>eclipse-temurin:25-jre</image>
                             </from>
                             <to>
                                 <image>cosmos-fraud/${project.artifactId}:latest</image>

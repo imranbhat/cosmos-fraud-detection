@@ -8,7 +8,7 @@
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Language | Java | 21 |
+| Language | Java | 25 (LTS) |
 | Framework | Spring Boot | 4.0.x |
 | Build Tool | Maven | 3.9+ |
 | Streaming | Apache Kafka | 4.1+ |
@@ -61,7 +61,7 @@ cosmos-fraud-detection/
 
 ### Parent POM
 
-- Java 21 with `--enable-preview`
+- Java 25 (LTS)
 - spring-boot-starter-parent 4.0.x as parent
 - `<dependencyManagement>` for: Kafka, Flink, Redis (Lettuce), ScyllaDB driver, ClickHouse JDBC, Resilience4j, OpenTelemetry, ONNX Runtime, Avro
 - `<pluginManagement>` for: maven-compiler-plugin, maven-surefire-plugin, maven-failsafe-plugin, spring-boot-maven-plugin, avro-maven-plugin, jib-maven-plugin
