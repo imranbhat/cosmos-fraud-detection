@@ -1,0 +1,66 @@
+# =============================================================================
+# Grafana Tempo Configuration
+# Cosmos Fraud Detection – Local Development
+#
+# Receives traces via OTLP from the OpenTelemetry Collector.
+# Stores traces locally; generates metrics from traces (span metrics).
+# =============================================================================
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 48h    # Keep traces for 2 days in dev
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      environment: dev
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://mimir:9009/api/v1/push
+        send_exemplars: true
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+  processor:
+    span_metrics:
+      dimensions:
+        - service.name
+        - http.method
+        - http.status_code
+        - http.route
+    service_graphs:
+      dimensions:
+        - service.name
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /tmp/tempo/wal
+    local:
+      path: /tmp/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [span-metrics, service-graphs]

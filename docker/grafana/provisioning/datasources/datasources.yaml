@@ -1,0 +1,103 @@
+# =============================================================================
+# Grafana – Auto-provisioned Datasources (LGTM Stack)
+# Cosmos Fraud Detection – Local Development
+#
+# Datasources:
+#   - Mimir    (Prometheus-compatible metrics)
+#   - Tempo    (distributed traces)
+#   - Loki     (log aggregation)
+#
+# All datasources are cross-linked for seamless correlation:
+#   Traces ↔ Logs ↔ Metrics (exemplars, derived fields)
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+
+  # --------------------------------------------------------------------------
+  # Mimir – metrics (Prometheus-compatible query API)
+  # --------------------------------------------------------------------------
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    uid: mimir
+    url: http://mimir:9009/prometheus
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "15s"
+      prometheusType: Mimir
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: View Trace
+
+  # --------------------------------------------------------------------------
+  # Tempo – distributed tracing
+  # --------------------------------------------------------------------------
+  - name: Tempo
+    type: tempo
+    access: proxy
+    uid: tempo
+    url: http://tempo:3200
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service_name
+      tracesToMetrics:
+        datasourceUid: mimir
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - key: service.name
+            value: service
+        queries:
+          - name: Request Rate
+            query: "sum(rate(traces_spanmetrics_calls_total{$$__tags}[5m]))"
+          - name: Error Rate
+            query: "sum(rate(traces_spanmetrics_calls_total{$$__tags, status_code=\"STATUS_CODE_ERROR\"}[5m]))"
+          - name: Duration (p95)
+            query: "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_milliseconds_bucket{$$__tags}[5m])) by (le))"
+      serviceMap:
+        datasourceUid: mimir
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: loki
+
+  # --------------------------------------------------------------------------
+  # Loki – log aggregation
+  # --------------------------------------------------------------------------
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          matcherRegex: "\"trace_id\":\"(\\w+)\""
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          matcherType: regex
+        - name: TraceID
+          matcherRegex: "traceId=(\\w+)"
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          matcherType: regex
