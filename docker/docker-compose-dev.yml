@@ -9,10 +9,12 @@
 #   docker compose -f docker-compose-dev.yml up -d
 #
 # Dashboards:
-#   Grafana  : http://localhost:3000  (admin / admin)
-#   Prometheus: http://localhost:9090
-#   Jaeger   : http://localhost:16686
-#   Flink UI : http://localhost:8088
+#   Grafana    : http://localhost:3000  (admin / admin)
+#   Tempo      : http://localhost:3200  (trace search)
+#   Mimir      : http://localhost:9009  (Prometheus-compatible API)
+#   Loki       : http://localhost:3100  (log query API)
+#   OTel Zpages: http://localhost:55679 (collector debug)
+#   Flink UI   : http://localhost:8088
 # =============================================================================
 
 networks:
@@ -22,8 +24,10 @@ networks:
 volumes:
   kafka-data:
   clickhouse-data:
-  prometheus-data:
   grafana-data:
+  tempo-data:
+  loki-data:
+  mimir-data:
 
 services:
 
@@ -219,7 +223,8 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: ingestion-service
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -255,7 +260,8 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: feature-store
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -292,7 +298,8 @@ services:
       SPRING_KAFKA_PRODUCER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       MODEL_SERVING_URL: http://model-serving:8086
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: scoring-service
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -329,7 +336,8 @@ services:
       SERVER_PORT: 8084
       SCORING_SERVICE_URL: http://scoring-service:8083
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: threeds-service
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -370,7 +378,8 @@ services:
       CLICKHOUSE_USERNAME: default
       CLICKHOUSE_PASSWORD: ""
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: audit-service
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -432,7 +441,8 @@ services:
       # Disable JWT validation in dev (no real IdP)
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ""
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: gateway
       JAVA_OPTS: -Xmx384m -Xms128m
     depends_on:
@@ -475,7 +485,8 @@ services:
       # CPU-only: no GPU/CUDA
       ORT_USE_CPU: "true"
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: model-serving
       JAVA_OPTS: -Xmx384m -Xms128m
     deploy:
@@ -552,61 +563,133 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
-  # OBSERVABILITY
+  # OBSERVABILITY – LGTM Stack (Loki, Grafana, Tempo, Mimir)
+  #                 + OpenTelemetry Collector
   # ===========================================================================
 
-  jaeger:
-    image: jaegertracing/jaeger:2.16.0
-    container_name: jaeger
-    hostname: jaeger
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector – central telemetry pipeline
+  # Receives OTLP from all services, routes to Tempo/Loki/Mimir
+  # ---------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    container_name: otel-collector
+    hostname: otel-collector
     networks: [fraud-net]
     ports:
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
-    environment:
-      JAEGER_DISABLED: "false"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.25"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v3.3.0
-    container_name: prometheus
-    hostname: prometheus
-    networks: [fraud-net]
-    ports:
-      - "9090:9090"
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+      - "13133:13133"   # Health check
+      - "55679:55679"   # zPages (debug)
+      - "8888:8888"     # Collector metrics
     volumes:
-      - ./prometheus/prometheus-dev.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=2d"
-      - "--web.enable-lifecycle"
+      - ./otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      mimir:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.25"
+          memory: 384M
+          cpus: "0.5"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Grafana Tempo – distributed tracing backend (replaces Jaeger)
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: tempo
+    hostname: tempo
+    networks: [fraud-net]
+    ports:
+      - "3200:3200"     # Tempo HTTP API
+      - "9095:9095"     # Tempo gRPC
+    volumes:
+      - ./tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/tmp/tempo
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana Loki – log aggregation backend
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: loki
+    hostname: loki
+    networks: [fraud-net]
+    ports:
+      - "3100:3100"     # Loki HTTP API
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/tmp/loki
+    command: ["-config.file=/etc/loki/config.yaml"]
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana Mimir – long-term metrics storage (Prometheus-compatible)
+  # ---------------------------------------------------------------------------
+  mimir:
+    image: grafana/mimir:2.15.1
+    container_name: mimir
+    hostname: mimir
+    networks: [fraud-net]
+    ports:
+      - "9009:9009"     # Mimir HTTP API
+    volumes:
+      - ./mimir/mimir-config.yaml:/etc/mimir/config.yaml:ro
+      - mimir-data:/tmp/mimir
+    command: ["-config.file=/etc/mimir/config.yaml", "-target=all"]
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9009/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana – unified observability dashboard
+  # ---------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:11.5.2
     container_name: grafana
@@ -622,8 +705,14 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Enable Tempo service graph and node graph views
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor tempoServiceGraph
     depends_on:
-      prometheus:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      mimir:
         condition: service_healthy
     deploy:
       resources:
