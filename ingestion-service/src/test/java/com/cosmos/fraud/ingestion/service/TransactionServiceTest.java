@@ -6,7 +6,6 @@ import com.cosmos.fraud.common.dto.ScoringResponse;
 import com.cosmos.fraud.common.dto.TransactionRequest;
 import com.cosmos.fraud.common.exception.ScoringTimeoutException;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.kafka.requestreply.RequestReplyFuture;
 
@@ -71,7 +71,7 @@ class TransactionServiceTest {
         ConsumerRecord<String, SpecificRecord> consumerRecord =
                 new ConsumerRecord<>("scoring.replies", 0, 0L, "some-tx-id", decision);
 
-        when(replyingKafkaTemplate.sendAndReceive(any())).thenReturn(replyFuture);
+        when(replyingKafkaTemplate.sendAndReceive(any(org.apache.kafka.clients.producer.ProducerRecord.class))).thenReturn(replyFuture);
         when(replyFuture.get(anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(consumerRecord);
 
         ScoringResponse response = transactionService.processTransaction(request);
@@ -82,7 +82,7 @@ class TransactionServiceTest {
         assertThat(response.appliedRules()).contains("RULE_LOW_RISK");
 
         verify(kafkaTemplate).send(eq("transactions.raw"), any(String.class), any(SpecificRecord.class));
-        verify(replyingKafkaTemplate).sendAndReceive(any());
+        verify(replyingKafkaTemplate).sendAndReceive(any(org.apache.kafka.clients.producer.ProducerRecord.class));
     }
 
     @Test
@@ -91,7 +91,7 @@ class TransactionServiceTest {
             throws ExecutionException, InterruptedException, TimeoutException {
         TransactionRequest request = buildValidRequest();
 
-        when(replyingKafkaTemplate.sendAndReceive(any())).thenReturn(replyFuture);
+        when(replyingKafkaTemplate.sendAndReceive(any(org.apache.kafka.clients.producer.ProducerRecord.class))).thenReturn(replyFuture);
         when(replyFuture.get(anyLong(), eq(TimeUnit.MILLISECONDS)))
                 .thenThrow(new TimeoutException("Timed out"));
 
@@ -117,13 +117,8 @@ class TransactionServiceTest {
 
     @Test
     @DisplayName("scoringFallback is invoked when exception propagates from processTransaction")
-    void processTransaction_onKafkaError_fallbackReturnsApprove()
-            throws ExecutionException, InterruptedException, TimeoutException {
+    void processTransaction_onKafkaError_fallbackReturnsApprove() {
         TransactionRequest request = buildValidRequest();
-
-        when(replyingKafkaTemplate.sendAndReceive(any())).thenReturn(replyFuture);
-        when(replyFuture.get(anyLong(), eq(TimeUnit.MILLISECONDS)))
-                .thenThrow(new ExecutionException("Kafka error", new RuntimeException("broker down")));
 
         // The fallback is triggered by the @CircuitBreaker aspect in the Spring context.
         // In a unit test without the Spring AOP proxy, we verify the fallback method directly.

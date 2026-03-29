@@ -720,7 +720,7 @@ services:
   # OTLP gRPC endpoint: localhost:4317
   # ---------------------------------------------------------------------------
   jaeger:
-    image: jaegertracing/all-in-one:${JAEGER_VERSION:-1.54}
+    image: jaegertracing/jaeger:${JAEGER_VERSION:-2.16.0}
     container_name: jaeger
     hostname: jaeger
     networks:
@@ -730,9 +730,7 @@ services:
       - "4317:4317"     # OTLP gRPC receiver
       - "4318:4318"     # OTLP HTTP receiver (bonus)
     environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: memory
-      MEMORY_MAX_TRACES: ${JAEGER_MAX_TRACES:-10000}
+      JAEGER_DISABLED: "false"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
       interval: 10s

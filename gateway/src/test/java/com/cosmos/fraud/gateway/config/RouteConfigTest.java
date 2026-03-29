@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * out via test properties so no external services are required.</p>
  */
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = {
                 // Disable Redis auto-configuration in tests
                 "spring.data.redis.host=localhost",

@@ -67,8 +67,8 @@ class AuditMapperTest {
                 .setCardId("card-000")
                 .setRiskScore(0)
                 .setDecision(Decision.APPROVE)
-                .setAppliedRules(null)
-                .setModelScores(null)
+                .setAppliedRules(List.of())
+                .setModelScores(Map.of())
                 .setLatencyMs(10L)
                 .setTimestamp(NOW_MILLIS)
                 .build();

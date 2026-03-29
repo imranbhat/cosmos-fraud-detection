@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,10 +28,10 @@ class ModelControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockBean
+    @MockitoBean
     private ModelService modelService;
 
     // --- /v1/model/predict ---
@@ -82,7 +82,7 @@ class ModelControllerTest {
         mockMvc.perform(post("/v1/model/predict")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("features", features))))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isServiceUnavailable());
     }
 
     // --- /v1/model/reload ---

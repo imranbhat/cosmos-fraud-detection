@@ -34,8 +34,6 @@ class CorrelationIdGatewayFilterTest {
     @BeforeEach
     void setUp() {
         filter = new CorrelationIdGatewayFilter();
-        // Chain always succeeds and returns the exchange it received
-        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -118,6 +116,7 @@ class CorrelationIdGatewayFilterTest {
                 .get("/v1/features/123")
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
+        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();

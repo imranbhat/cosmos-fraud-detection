@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.4</version>
+        <version>4.0.5</version>
         <relativePath/>
     </parent>
 
@@ -41,7 +41,7 @@
         <!-- Dependency versions -->
         <kafka.version>3.7.0</kafka.version>
         <flink.version>1.19.1</flink.version>
-        <lettuce.version>6.3.2.RELEASE</lettuce.version>
+        <!-- lettuce version managed by Spring Boot parent -->
         <scylla-driver.version>4.18.0.0</scylla-driver.version>
         <clickhouse-jdbc.version>0.6.0</clickhouse-jdbc.version>
         <resilience4j.version>2.2.0</resilience4j.version>
@@ -49,7 +49,7 @@
         <onnxruntime.version>1.17.3</onnxruntime.version>
         <avro.version>1.11.3</avro.version>
         <confluent.version>7.6.1</confluent.version>
-        <micrometer.version>1.12.4</micrometer.version>
+        <!-- micrometer version managed by Spring Boot parent -->
         <logstash-logback.version>7.4</logstash-logback.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
 
@@ -97,12 +97,7 @@
                 <version>${flink.version}</version>
             </dependency>
 
-            <!-- Lettuce (Redis client) -->
-            <dependency>
-                <groupId>io.lettuce</groupId>
-                <artifactId>lettuce-core</artifactId>
-                <version>${lettuce.version}</version>
-            </dependency>
+            <!-- Lettuce (Redis client) — version managed by Spring Boot parent -->
 
             <!-- ScyllaDB / Cassandra driver -->
             <dependency>
@@ -163,12 +158,7 @@
                 <version>${confluent.version}</version>
             </dependency>
 
-            <!-- Micrometer -->
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-prometheus</artifactId>
-                <version>${micrometer.version}</version>
-            </dependency>
+            <!-- Micrometer — version managed by Spring Boot parent -->
 
             <!-- Logstash Logback Encoder -->
             <dependency>

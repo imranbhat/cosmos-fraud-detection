@@ -556,7 +556,7 @@ services:
   # ===========================================================================
 
   jaeger:
-    image: jaegertracing/all-in-one:1.54
+    image: jaegertracing/jaeger:2.16.0
     container_name: jaeger
     hostname: jaeger
     networks: [fraud-net]
@@ -565,9 +565,7 @@ services:
       - "4317:4317"
       - "4318:4318"
     environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: memory
-      MEMORY_MAX_TRACES: 5000
+      JAEGER_DISABLED: "false"
     deploy:
       resources:
         limits:
