@@ -404,7 +404,7 @@ services:
   # ===========================================================================
 
   scylla-1:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-1
     hostname: scylla-1
     networks:
@@ -428,7 +428,7 @@ services:
     restart: unless-stopped
 
   scylla-2:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-2
     hostname: scylla-2
     networks:
@@ -455,7 +455,7 @@ services:
     restart: unless-stopped
 
   scylla-3:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-3
     hostname: scylla-3
     networks:
@@ -486,7 +486,7 @@ services:
   # ===========================================================================
 
   clickhouse:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-24.3}
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-25.3}
     container_name: clickhouse
     hostname: clickhouse
     networks:
@@ -744,7 +744,7 @@ services:
   # UI: http://localhost:9090
   # ---------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.50.1}
+    image: prom/prometheus:${PROMETHEUS_VERSION:-v3.3.0}
     container_name: prometheus
     hostname: prometheus
     networks:
@@ -774,7 +774,7 @@ services:
   # UI: http://localhost:3000  (admin / admin by default)
   # ---------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana:${GRAFANA_VERSION:-10.3.3}
+    image: grafana/grafana:${GRAFANA_VERSION:-11.5.2}
     container_name: grafana
     hostname: grafana
     networks:

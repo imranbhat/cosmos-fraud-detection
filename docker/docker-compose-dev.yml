@@ -142,7 +142,7 @@ services:
   # ===========================================================================
 
   scylla:
-    image: scylladb/scylla:6.0
+    image: scylladb/scylla:6.2
     container_name: scylla
     hostname: scylla
     networks: [fraud-net]
@@ -174,7 +174,7 @@ services:
   # ===========================================================================
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:25.3
     container_name: clickhouse
     hostname: clickhouse
     networks: [fraud-net]
@@ -497,7 +497,7 @@ services:
   # ===========================================================================
 
   flink-jobmanager:
-    image: flink:1.19
+    image: flink:2.2
     container_name: flink-jobmanager
     hostname: flink-jobmanager
     networks: [fraud-net]
@@ -528,7 +528,7 @@ services:
     restart: unless-stopped
 
   flink-taskmanager:
-    image: flink:1.19
+    image: flink:2.2
     container_name: flink-taskmanager
     hostname: flink-taskmanager
     networks: [fraud-net]
@@ -580,7 +580,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v2.50.1
+    image: prom/prometheus:v3.3.0
     container_name: prometheus
     hostname: prometheus
     networks: [fraud-net]
@@ -608,7 +608,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:10.3.3
+    image: grafana/grafana:11.5.2
     container_name: grafana
     hostname: grafana
     networks: [fraud-net]
