@@ -32,7 +32,7 @@ services:
   # ===========================================================================
 
   kafka:
-    image: confluentinc/cp-kafka:7.6.1
+    image: confluentinc/cp-kafka:8.1.2
     container_name: kafka
     hostname: kafka
     networks: [fraud-net]
@@ -79,7 +79,7 @@ services:
   # ===========================================================================
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:7.6.1
+    image: confluentinc/cp-schema-registry:8.1.2
     container_name: schema-registry
     hostname: schema-registry
     networks: [fraud-net]

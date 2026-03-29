@@ -39,7 +39,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
-        <kafka.version>3.7.0</kafka.version>
+        <!-- kafka-clients version managed by Spring Boot parent (4.1.2) -->
         <flink.version>1.19.1</flink.version>
         <!-- lettuce version managed by Spring Boot parent -->
         <scylla-driver.version>4.18.0.0</scylla-driver.version>
@@ -47,14 +47,14 @@
         <resilience4j.version>2.2.0</resilience4j.version>
         <opentelemetry.version>1.36.0</opentelemetry.version>
         <onnxruntime.version>1.17.3</onnxruntime.version>
-        <avro.version>1.11.3</avro.version>
-        <confluent.version>7.6.1</confluent.version>
+        <avro.version>1.12.1</avro.version>
+        <confluent.version>8.1.2</confluent.version>
         <!-- micrometer version managed by Spring Boot parent -->
         <logstash-logback.version>7.4</logstash-logback.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
 
         <!-- Plugin versions -->
-        <avro-maven-plugin.version>1.11.3</avro-maven-plugin.version>
+        <avro-maven-plugin.version>1.12.1</avro-maven-plugin.version>
         <jib-maven-plugin.version>3.4.1</jib-maven-plugin.version>
         <maven-shade-plugin.version>3.5.2</maven-shade-plugin.version>
     </properties>
@@ -68,12 +68,7 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- Apache Kafka -->
-            <dependency>
-                <groupId>org.apache.kafka</groupId>
-                <artifactId>kafka-clients</artifactId>
-                <version>${kafka.version}</version>
-            </dependency>
+            <!-- Apache Kafka — version managed by Spring Boot parent -->
 
             <!-- Apache Flink -->
             <dependency>
