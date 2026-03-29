@@ -85,18 +85,18 @@ A production-grade, real-time fraud detection platform for card-issuing banks. P
 | Component | Technology | Version |
 |-----------|-----------|---------|
 | Language | Java | 21 (with preview features) |
-| Framework | Spring Boot | 3.4.4 |
+| Framework | Spring Boot | 4.0.5 |
 | Build Tool | Apache Maven | 3.9+ (multi-module) |
-| Event Streaming | Apache Kafka | 3.7.0 (KRaft, no Zookeeper) |
-| Stream Processing | Apache Flink | 1.19.1 |
+| Event Streaming | Apache Kafka | 4.1.2 (KRaft, no Zookeeper) |
+| Stream Processing | Apache Flink | 2.2.0 |
 | Feature Store | Redis | 7.x (Cluster mode, Lettuce client) |
 | Audit Database | ScyllaDB | 6.x |
-| Analytics Database | ClickHouse | 24.x |
-| Serialization | Apache Avro | 1.11.3 |
-| Schema Registry | Confluent | 7.6.1 |
-| ML Inference | ONNX Runtime | 1.17.3 |
-| Resilience | Resilience4j | 2.2.0 |
-| Observability | OpenTelemetry + Micrometer | 1.36.0 |
+| Analytics Database | ClickHouse | 25.x |
+| Serialization | Apache Avro | 1.12.1 |
+| Schema Registry | Confluent | 8.1.2 |
+| ML Inference | ONNX Runtime | 1.22.0 |
+| Resilience | Resilience4j | 2.3.0 |
+| Observability | OpenTelemetry + Micrometer | 1.51.0 |
 | Containerization | Docker + Kubernetes + Helm | - |
 | CI/CD | GitHub Actions | - |
 
@@ -104,7 +104,7 @@ A production-grade, real-time fraud detection platform for card-issuing banks. P
 
 ```
 cosmos-fraud-detection/
-├── pom.xml                        # Parent POM (Java 21, Spring Boot 3.4 BOM)
+├── pom.xml                        # Parent POM (Java 21, Spring Boot 4.0 BOM)
 ├── common/                        # Shared DTOs, Avro schemas, security, Kafka config
 ├── ingestion-service/             # Transaction intake, Kafka producer, sync scoring
 ├── feature-store/                 # Redis-backed feature computation (Lua scripts)
@@ -165,7 +165,7 @@ EMV 3D Secure 2.x integration:
 - In-memory challenge session tracking with ECI assignment (05 Visa, 02 MC)
 
 ### stream-processor/ (Flink fat JAR)
-Apache Flink 1.19 streaming jobs:
+Apache Flink 2.2 streaming jobs:
 - **TransactionEnrichmentJob**: `transactions.raw` → async feature enrichment → `transactions.enriched`
 - **FraudAlertAggregationJob**: `fraud.decisions` → 5-min tumbling window → decline spike detection → `fraud.alerts`
 - RocksDB state backend, exactly-once checkpointing every 30s

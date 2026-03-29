@@ -9,17 +9,17 @@
 | Component | Technology | Version |
 |-----------|-----------|---------|
 | Language | Java | 21 |
-| Framework | Spring Boot | 3.4.x |
+| Framework | Spring Boot | 4.0.x |
 | Build Tool | Maven | 3.9+ |
-| Streaming | Apache Kafka | 3.7+ |
-| Stream Processing | Apache Flink | 1.19 |
+| Streaming | Apache Kafka | 4.1+ |
+| Stream Processing | Apache Flink | 2.2 |
 | Feature Store | Redis (Lettuce) | 7.x |
 | History DB | ScyllaDB | 6.x |
-| Analytics DB | ClickHouse | 24.x |
-| Serialization | Apache Avro | 1.11+ |
+| Analytics DB | ClickHouse | 25.x |
+| Serialization | Apache Avro | 1.12+ |
 | Resilience | Resilience4j | 2.x |
 | Observability | OpenTelemetry + Micrometer | - |
-| ML Inference | ONNX Runtime | 1.17+ |
+| ML Inference | ONNX Runtime | 1.22+ |
 | Containerization | Docker + Kubernetes + Helm | - |
 
 ## Architecture
@@ -62,7 +62,7 @@ cosmos-fraud-detection/
 ### Parent POM
 
 - Java 21 with `--enable-preview`
-- spring-boot-starter-parent 3.4.x as parent
+- spring-boot-starter-parent 4.0.x as parent
 - `<dependencyManagement>` for: Kafka, Flink, Redis (Lettuce), ScyllaDB driver, ClickHouse JDBC, Resilience4j, OpenTelemetry, ONNX Runtime, Avro
 - `<pluginManagement>` for: maven-compiler-plugin, maven-surefire-plugin, maven-failsafe-plugin, spring-boot-maven-plugin, avro-maven-plugin, jib-maven-plugin
 - Profiles: `local` (default, Testcontainers), `integration-test` (failsafe), `docker` (jib build)
@@ -84,7 +84,7 @@ cosmos-fraud-detection/
 
 ### ingestion-service/
 
-- Spring Boot 3.4 + spring-kafka
+- Spring Boot 4.0 + spring-kafka
 - POST /v1/transactions/score endpoint
 - Validates input, assigns txId (ULID), publishes to `transactions.raw`
 - Sync path: waits for scoring result via Kafka request-reply (ReplyingKafkaTemplate) with 45ms timeout
