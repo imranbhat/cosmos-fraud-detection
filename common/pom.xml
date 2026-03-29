@@ -16,6 +16,10 @@
     <name>common</name>
     <description>Common shared library for Cosmos Fraud Detection</description>
 
+    <properties>
+        <jib.skip>true</jib.skip>
+    </properties>
+
     <dependencies>
         <!-- Spring Web -->
         <dependency>

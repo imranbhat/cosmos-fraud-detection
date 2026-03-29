@@ -17,6 +17,11 @@
     <name>stream-processor</name>
     <description>Apache Flink stream processing job for Cosmos Fraud Detection</description>
 
+    <properties>
+        <jib.skip>true</jib.skip>
+        <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+    </properties>
+
     <dependencies>
         <!-- Flink Streaming Java -->
         <dependency>

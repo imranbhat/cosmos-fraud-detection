@@ -51,6 +51,7 @@
         <avro.version>1.12.1</avro.version>
         <confluent.version>8.1.2</confluent.version>
         <!-- micrometer version managed by Spring Boot parent -->
+        <micrometer-tracing.version>1.5.0</micrometer-tracing.version>
         <logstash-logback.version>8.1</logstash-logback.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
 
@@ -126,6 +127,18 @@
                 <groupId>io.opentelemetry</groupId>
                 <artifactId>opentelemetry-sdk</artifactId>
                 <version>${opentelemetry.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-exporter-otlp</artifactId>
+                <version>${opentelemetry.version}</version>
+            </dependency>
+
+            <!-- Micrometer Tracing → OpenTelemetry Bridge -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-tracing-bridge-otel</artifactId>
+                <version>${micrometer-tracing.version}</version>
             </dependency>
 
             <!-- ONNX Runtime -->
