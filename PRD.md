@@ -18,7 +18,7 @@
 | Analytics DB | ClickHouse | 25.x |
 | Serialization | Apache Avro | 1.12+ |
 | Resilience | Resilience4j | 2.x |
-| Observability | OpenTelemetry + Micrometer | - |
+| Observability | OpenTelemetry + Micrometer + LGTM Stack | - |
 | ML Inference | ONNX Runtime | 1.22+ |
 | Containerization | Docker + Kubernetes + Helm | - |
 
@@ -199,10 +199,13 @@ cosmos-fraud-detection/
 - Feature store reads: <5ms P99
 
 ### Observability
-- Micrometer metrics (Prometheus)
-- Structured JSON logging (logstash-logback-encoder)
-- Distributed tracing (OpenTelemetry)
+- LGTM stack: Loki (logs), Grafana (dashboards), Tempo (traces), Mimir (metrics)
+- OpenTelemetry Collector as central telemetry pipeline (OTLP receivers → LGTM backends)
+- Micrometer Tracing bridge → OTel OTLP exporter for distributed tracing
+- Micrometer metrics (Prometheus format) scraped by OTel Collector → Mimir
+- Structured JSON logging (logstash-logback-encoder) → Loki
 - Grafana dashboards: TPS, scoring latency, decision distribution, Kafka consumer lag
+- Full correlation: traces ↔ logs ↔ metrics (exemplars, derived fields, service graphs)
 
 ### Security
 - JWT authentication at gateway

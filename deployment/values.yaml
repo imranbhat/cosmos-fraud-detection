@@ -181,6 +181,18 @@ clickhouse:
 
 monitoring:
   enabled: true
+  otelCollector:
+    enabled: true
+    image: otel/opentelemetry-collector-contrib:0.120.0
+  tempo:
+    enabled: true
+    image: grafana/tempo:2.7.2
+  loki:
+    enabled: true
+    image: grafana/loki:3.4.2
+  mimir:
+    enabled: true
+    image: grafana/mimir:2.15.1
   serviceMonitor:
     interval: 15s
     scrapeTimeout: 10s
