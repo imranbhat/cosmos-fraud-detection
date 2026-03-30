@@ -23,7 +23,7 @@ public class ScoringClient {
     private static final Logger log = LoggerFactory.getLogger(ScoringClient.class);
 
     /** Fallback score returned when the scoring service is unavailable. */
-    static final int FALLBACK_HIGH_RISK_SCORE = 850;
+    public static final int FALLBACK_HIGH_RISK_SCORE = 850;
 
     private static final String SCORE_PATH = "/v1/score";
 

@@ -8,7 +8,7 @@
 #                    ClickHouse
 #   Application    : ingestion-service, feature-store, scoring-service,
 #                    threeds-service, audit-service, gateway
-#   Observability  : Jaeger, Prometheus, Grafana
+#   Observability  : OTel Collector, Tempo, Loki, Mimir, Grafana
 #
 # Usage:
 #   docker compose --env-file .env up -d
@@ -40,8 +40,10 @@ volumes:
   scylla-data-2:
   scylla-data-3:
   clickhouse-data:
-  prometheus-data:
   grafana-data:
+  tempo-data:
+  loki-data:
+  mimir-data:
 
 # ---------------------------------------------------------------------------
 # x- Anchors (reusable fragments)
@@ -91,8 +93,9 @@ x-app-common-env: &app-common-env
   CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/default
   CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-default}
   CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-  # Tracing
-  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  # Tracing (OTel Collector)
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
   OTEL_SERVICE_NAME: "cosmos-fraud-detection"
   # Spring profile
   SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
@@ -106,7 +109,7 @@ services:
   # ===========================================================================
 
   kafka-1:
-    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-8.1.2}
     container_name: kafka-1
     hostname: kafka-1
     networks:
@@ -125,7 +128,7 @@ services:
     restart: unless-stopped
 
   kafka-2:
-    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-8.1.2}
     container_name: kafka-2
     hostname: kafka-2
     networks:
@@ -144,7 +147,7 @@ services:
     restart: unless-stopped
 
   kafka-3:
-    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.1}
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-8.1.2}
     container_name: kafka-3
     hostname: kafka-3
     networks:
@@ -168,7 +171,7 @@ services:
   # ===========================================================================
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:${KAFKA_VERSION:-7.6.1}
+    image: confluentinc/cp-schema-registry:${KAFKA_VERSION:-8.1.2}
     container_name: schema-registry
     hostname: schema-registry
     networks:
@@ -404,7 +407,7 @@ services:
   # ===========================================================================
 
   scylla-1:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-1
     hostname: scylla-1
     networks:
@@ -428,7 +431,7 @@ services:
     restart: unless-stopped
 
   scylla-2:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-2
     hostname: scylla-2
     networks:
@@ -455,7 +458,7 @@ services:
     restart: unless-stopped
 
   scylla-3:
-    image: scylladb/scylla:${SCYLLA_VERSION:-6.0}
+    image: scylladb/scylla:${SCYLLA_VERSION:-6.2}
     container_name: scylla-3
     hostname: scylla-3
     networks:
@@ -486,7 +489,7 @@ services:
   # ===========================================================================
 
   clickhouse:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-24.3}
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-25.3}
     container_name: clickhouse
     hostname: clickhouse
     networks:
@@ -711,72 +714,121 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
-  # OBSERVABILITY
+  # OBSERVABILITY – LGTM Stack (Loki, Grafana, Tempo, Mimir)
+  #                 + OpenTelemetry Collector
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # Jaeger – Distributed Tracing
-  # UI: http://localhost:16686
-  # OTLP gRPC endpoint: localhost:4317
+  # OpenTelemetry Collector – central telemetry pipeline
   # ---------------------------------------------------------------------------
-  jaeger:
-    image: jaegertracing/all-in-one:${JAEGER_VERSION:-1.54}
-    container_name: jaeger
-    hostname: jaeger
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.120.0}
+    container_name: otel-collector
+    hostname: otel-collector
     networks:
       - fraud-detection-net
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC receiver
-      - "4318:4318"     # OTLP HTTP receiver (bonus)
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: memory
-      MEMORY_MAX_TRACES: ${JAEGER_MAX_TRACES:-10000}
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    restart: unless-stopped
-
-  # ---------------------------------------------------------------------------
-  # Prometheus – Metrics Collection
-  # UI: http://localhost:9090
-  # ---------------------------------------------------------------------------
-  prometheus:
-    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.50.1}
-    container_name: prometheus
-    hostname: prometheus
-    networks:
-      - fraud-detection-net
-    ports:
-      - "9090:9090"
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+      - "13133:13133"   # Health check
+      - "55679:55679"   # zPages (debug)
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}"
-      - "--web.enable-lifecycle"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - ./otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      mimir:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana Tempo – Distributed Tracing
+  # API: http://localhost:3200
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:${TEMPO_VERSION:-2.7.2}
+    container_name: tempo
+    hostname: tempo
+    networks:
+      - fraud-detection-net
+    ports:
+      - "3200:3200"
+      - "9095:9095"
+    volumes:
+      - ./tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/tmp/tempo
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
       start_period: 15s
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Grafana – Dashboards
+  # Grafana Loki – Log Aggregation
+  # API: http://localhost:3100
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.4.2}
+    container_name: loki
+    hostname: loki
+    networks:
+      - fraud-detection-net
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/tmp/loki
+    command: ["-config.file=/etc/loki/config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana Mimir – Metrics Storage (Prometheus-compatible)
+  # API: http://localhost:9009
+  # ---------------------------------------------------------------------------
+  mimir:
+    image: grafana/mimir:${MIMIR_VERSION:-2.15.1}
+    container_name: mimir
+    hostname: mimir
+    networks:
+      - fraud-detection-net
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./mimir/mimir-config.yaml:/etc/mimir/config.yaml:ro
+      - mimir-data:/tmp/mimir
+    command: ["-config.file=/etc/mimir/config.yaml", "-target=all"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9009/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana – Unified Observability Dashboard
   # UI: http://localhost:3000  (admin / admin by default)
   # ---------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana:${GRAFANA_VERSION:-10.3.3}
+    image: grafana/grafana:${GRAFANA_VERSION:-11.5.2}
     container_name: grafana
     hostname: grafana
     networks:
@@ -791,9 +843,13 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_INSTALL_PLUGINS: ""
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor tempoServiceGraph
     depends_on:
-      prometheus:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      mimir:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]

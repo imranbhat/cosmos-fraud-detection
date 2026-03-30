@@ -1,0 +1,165 @@
+# =============================================================================
+# OpenTelemetry Collector Configuration
+# Cosmos Fraud Detection – Local Development
+#
+# Receives OTLP from all services and routes:
+#   - Traces  → Grafana Tempo
+#   - Metrics → Prometheus (remote write to Mimir)
+#   - Logs    → Grafana Loki
+# =============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Scrape Prometheus metrics from Spring Boot Actuator endpoints
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 15s
+          static_configs:
+            - targets: [localhost:8888]
+
+        - job_name: gateway
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [gateway:8080]
+              labels:
+                service: gateway
+
+        - job_name: ingestion-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [ingestion-service:8081]
+              labels:
+                service: ingestion-service
+
+        - job_name: feature-store
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [feature-store:8082]
+              labels:
+                service: feature-store
+
+        - job_name: scoring-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [scoring-service:8083]
+              labels:
+                service: scoring-service
+
+        - job_name: threeds-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [threeds-service:8084]
+              labels:
+                service: threeds-service
+
+        - job_name: audit-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [audit-service:8085]
+              labels:
+                service: audit-service
+
+        - job_name: model-serving
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: [model-serving:8086]
+              labels:
+                service: model-serving
+
+processors:
+  batch:
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+    timeout: 5s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: dev
+        action: upsert
+      - key: service.namespace
+        value: cosmos-fraud-detection
+        action: upsert
+
+  # Add resource attributes from OTLP resource to make them available as labels
+  attributes:
+    actions:
+      - key: service.name
+        action: upsert
+
+exporters:
+  # Traces → Tempo (OTLP gRPC)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics → Mimir (Prometheus remote write)
+  prometheusremotewrite/mimir:
+    endpoint: http://mimir:9009/api/v1/push
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Logs → Loki (OTLP)
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  # Debug exporter for troubleshooting (minimal verbosity)
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, zpages]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]
+
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheusremotewrite/mimir]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]

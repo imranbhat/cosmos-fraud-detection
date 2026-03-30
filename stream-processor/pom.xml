@@ -17,26 +17,35 @@
     <name>stream-processor</name>
     <description>Apache Flink stream processing job for Cosmos Fraud Detection</description>
 
+    <properties>
+        <jib.skip>true</jib.skip>
+        <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+    </properties>
+
     <dependencies>
-        <!-- Flink Streaming Java (provided — available in Flink cluster) -->
+        <!-- Flink Streaming Java -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-streaming-java</artifactId>
-            <scope>provided</scope>
         </dependency>
 
-        <!-- Flink Kafka Connector (provided — available in Flink cluster) -->
+        <!-- Flink Kafka Connector -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-kafka</artifactId>
-            <scope>provided</scope>
         </dependency>
 
-        <!-- Flink RocksDB State Backend (provided — available in Flink cluster) -->
+        <!-- Flink Connector Base (required by Kafka connector at runtime) -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <!-- Flink RocksDB State Backend -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-statebackend-rocksdb</artifactId>
-            <scope>provided</scope>
         </dependency>
 
         <!-- Flink Avro (bundled in the fat JAR) -->
@@ -50,6 +59,7 @@
             <groupId>com.cosmos.fraud</groupId>
             <artifactId>common</artifactId>
         </dependency>
+
     </dependencies>
 
     <build>

@@ -74,6 +74,18 @@ public class ModelController {
                 : ResponseEntity.status(503).body(response);
     }
 
+    // --- Exception handlers ---
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(ModelService.ModelNotLoadedException.class)
+    public ResponseEntity<Map<String, String>> handleModelNotLoaded(ModelService.ModelNotLoadedException ex) {
+        return ResponseEntity.status(503).body(Map.of("error", ex.getMessage()));
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(ModelService.ModelLoadException.class)
+    public ResponseEntity<Map<String, String>> handleModelLoadFailure(ModelService.ModelLoadException ex) {
+        return ResponseEntity.internalServerError().body(Map.of("error", ex.getMessage()));
+    }
+
     // --- Request / Response records ---
 
     public record PredictRequest(float[] features) {}

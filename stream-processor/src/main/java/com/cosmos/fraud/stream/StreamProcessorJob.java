@@ -3,8 +3,8 @@ package com.cosmos.fraud.stream;
 import com.cosmos.fraud.stream.config.StreamConfig;
 import com.cosmos.fraud.stream.job.FraudAlertAggregationJob;
 import com.cosmos.fraud.stream.job.TransactionEnrichmentJob;
-import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  *
  * <h3>Environment setup</h3>
  * <ul>
- *   <li>State backend: {@link EmbeddedRocksDBStateBackend} (incremental checkpoints)</li>
+ *   <li>State backend: RocksDB (incremental checkpoints)</li>
  *   <li>Checkpointing: exactly-once every 30 seconds</li>
  *   <li>Minimum pause between checkpoints: 5 seconds</li>
  *   <li>Checkpoint timeout: 60 seconds</li>
@@ -57,16 +57,11 @@ public final class StreamProcessorJob {
         LOG.info("Starting {}", JOB_NAME);
 
         // ---- 1. Resolve configuration from CLI args ----------------------
-        ParameterTool params = ParameterTool.fromArgs(args);
-        StreamConfig config  = StreamConfig.from(params);
+        StreamConfig config = StreamConfig.fromArgs(args);
         LOG.info("Resolved config: {}", config);
 
         // ---- 2. Create and configure the execution environment -----------
         StreamExecutionEnvironment env = createEnvironment(config);
-
-        // Expose the ParameterTool as global job parameter so that operators
-        // can access it via getRuntimeContext().getExecutionConfig().getGlobalJobParameters()
-        env.getConfig().setGlobalJobParameters(params);
 
         // ---- 3. Build pipelines ------------------------------------------
         TransactionEnrichmentJob.buildPipeline(env, config);
@@ -90,13 +85,13 @@ public final class StreamProcessorJob {
      * @param config the resolved stream configuration
      * @return configured environment
      */
-    static StreamExecutionEnvironment createEnvironment(StreamConfig config) {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    public static StreamExecutionEnvironment createEnvironment(StreamConfig config) {
+        // Configure RocksDB state backend via Configuration (Flink 2.x API)
+        Configuration flinkConfig = new Configuration();
+        flinkConfig.setString(StateBackendOptions.STATE_BACKEND.key(), "rocksdb");
+        flinkConfig.setString("state.backend.incremental", "true");
 
-        // ---- RocksDB state backend (incremental checkpoints) -------------
-        EmbeddedRocksDBStateBackend rocksDb = new EmbeddedRocksDBStateBackend(
-                /* enableIncrementalCheckpointing = */ true);
-        env.setStateBackend(rocksDb);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(flinkConfig);
 
         // ---- Checkpointing -----------------------------------------------
         long checkpointInterval = config.getCheckpointIntervalMs();   // default 30 000 ms
@@ -114,8 +109,8 @@ public final class StreamProcessorJob {
         cpConfig.setMaxConcurrentCheckpoints(1);
 
         // Retain checkpoints on job cancellation so we can resume from them
-        cpConfig.setExternalizedCheckpointCleanup(
-                CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+        flinkConfig.setString("execution.checkpointing.externalized-checkpoint-retention",
+                "RETAIN_ON_CANCELLATION");
 
         LOG.info("Flink environment configured: checkpointInterval={}ms, backend=RocksDB",
                 checkpointInterval);

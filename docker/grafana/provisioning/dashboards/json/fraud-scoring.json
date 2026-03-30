@@ -11,7 +11,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] }, "unit": "reqps" } },
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
       "id": 50,
@@ -21,7 +21,7 @@
       "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\",uri=~\"/v1/transactions.*\"}[1m]))", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] }, "unit": "ms" } },
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "id": 51,
@@ -31,7 +31,7 @@
       "targets": [{ "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"ingestion-service\",uri=~\"/v1/transactions.*\"}[1m])) by (le)) * 1000", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] }, "unit": "percentunit" } },
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "id": 52,
@@ -41,7 +41,7 @@
       "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"ingestion-service\"}[5m]))", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "id": 53,
@@ -58,7 +58,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "gradientMode": "scheme", "showPoints": "never" }, "unit": "ms" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
       "id": 60,
@@ -72,7 +72,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
       "id": 61,
@@ -93,7 +93,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "ms" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "id": 70,
@@ -106,7 +106,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "id": 71,
@@ -125,7 +125,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "ms" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
       "id": 80,
@@ -138,7 +138,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" }, "unit": "reqps" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
       "id": 81,
